@@ -80,6 +80,7 @@ keel_keys_setup() {
     echo '  ssh-keygen -t ed25519 -C "my-computer"'
     echo "Then display and copy its PUBLIC key:"
     echo "  macOS/Linux: cat ~/.ssh/id_ed25519.pub"
+    # shellcheck disable=SC2016 # Literal PowerShell environment variable
     echo '  Windows PowerShell: Get-Content "$env:USERPROFILE\.ssh\id_ed25519.pub"'
     echo "Paste the public key below. Never paste your private key."
     keel_add_key "$file"
