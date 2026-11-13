@@ -4,6 +4,7 @@
 KEEL_CONFIG=/etc/keel/config
 KEEL_STATE=/var/lib/keel
 KEEL_BACKUP=/var/backups/keel
+# shellcheck disable=SC2034 # Shared with security.sh
 KEEL_SSH_DROPIN=/etc/ssh/sshd_config.d/05-keel.conf
 
 keel_log() { printf '\n==> %s\n' "$*"; }
@@ -67,8 +68,8 @@ keel_is_tailscale_ip() {
   return 1
 }
 keel_session_dest() {
-  local a b dest port
-  read -r a b dest port <<< "$1"
+  local _client_ip _client_port dest port
+  read -r _client_ip _client_port dest port <<< "$1"
   [[ -n "$dest" && -n "$port" ]] || return 1
   printf '%s' "$dest"
 }
