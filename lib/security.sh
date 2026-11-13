@@ -102,8 +102,11 @@ keel_rollback() {
   else
     rm -f "$KEEL_SSH_DROPIN"
   fi
-  /usr/sbin/sshd -t && systemctl reload ssh || \
+  if /usr/sbin/sshd -t; then
+    systemctl reload ssh || keel_warn "SSH reload failed during rollback."
+  else
     keel_warn "SSH configuration validation failed during rollback."
+  fi
 
   # Restore original UFW files and status (preflight rejects custom rules).
   ufw --force disable || true
