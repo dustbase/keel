@@ -120,11 +120,11 @@ keel_secure() {
   trap 'exit 143' TERM HUP
   keel_transaction_phase applying
   if ! keel_apply_security; then
-    keel_rollback || keel_die 'Apply and recovery failed; use rescue console.'
+    keel_rollback "" || keel_die 'Apply and recovery failed; use rescue console.'
     keel_die 'Apply failed; previous SSH/firewall settings restored.'
   fi
   if (( $(keel_ticks) >= $(cat "$KEEL_TX/deadline") )); then
-    keel_rollback || keel_die 'Apply exceeded the deadline and recovery failed; use rescue console.'
+    keel_rollback "" || keel_die 'Apply exceeded the deadline and recovery failed; use rescue console.'
     keel_die 'Apply exceeded the recovery window; previous settings restored.'
   fi
   keel_atomic_write "$KEEL_TX/applied-boundary" "$(keel_record_boundary)"

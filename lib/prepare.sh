@@ -71,8 +71,9 @@ keel_init() {
     4)
       KEEL_PROFILE=custom
       read -r -p "Rules (example: 25565/tcp,51820/udp): " KEEL_CUSTOM
-      keel_valid_rules "$KEEL_CUSTOM" && [[ -n "$KEEL_CUSTOM" ]] ||
+      if ! keel_valid_rules "$KEEL_CUSTOM" || [[ -z "$KEEL_CUSTOM" ]]; then
         keel_die "Invalid custom port rules."
+      fi
       ;;
     *) keel_die "Invalid firewall choice." ;;
   esac

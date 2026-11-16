@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2329
+# shellcheck disable=SC2329,SC2317
 # Functions override imported dependencies in isolated test processes.
 set -Eeuo pipefail
 cd "$(dirname "$0")/.."

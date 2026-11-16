@@ -139,7 +139,7 @@ keel_transaction_exit() {
   trap - EXIT HUP INT TERM
   if [[ -n "${KEEL_TX:-}" && -f "$KEEL_STATE/pending" ]]; then
     phase="$(cat "$KEEL_TX/phase")"
-    if [[ "$phase" == applying ]]; then keel_rollback || true; fi
+    if [[ "$phase" == applying ]]; then keel_rollback "" || true; fi
   fi
   exit "$rc"
 }
