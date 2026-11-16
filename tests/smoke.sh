@@ -8,9 +8,9 @@ bash bin/keel --help | grep -q 'Keel'
 source lib/common.sh
 keel_valid_hostname example
 keel_valid_hostname node-01
-! keel_valid_hostname -broken
-! keel_valid_hostname 'bad host'
+if keel_valid_hostname -broken; then exit 1; fi
+if keel_valid_hostname 'bad host'; then exit 1; fi
 keel_valid_user admin
-! keel_valid_user root
-! keel_valid_user 'bad user'
+if keel_valid_user root; then exit 1; fi
+if keel_valid_user 'bad user'; then exit 1; fi
 echo "Smoke tests passed"

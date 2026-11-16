@@ -1,246 +1,180 @@
 #!/usr/bin/env bash
-# Keel verification and reversible security changes.
-
-keel_current_session() {
-  [[ -n "${KEEL_SESSION:-}" ]] ||
-    keel_die "A fresh SSH session is required."
-  keel_session_dest "$KEEL_SESSION" >/dev/null ||
-    keel_die "Malformed SSH session metadata."
-  [[ "${SUDO_USER:-}" != root && -n "${SUDO_USER:-}" ]] ||
-    keel_die "Run this command as the intended account (without sudo)."
-}
-
-keel_verify_identity() {
-  keel_load_config
-  keel_current_session
-  [[ "$SUDO_USER" == "$KEEL_ADMIN" ]] ||
-    keel_die "Expected session login as $KEEL_ADMIN, got $SUDO_USER."
-  id -nG "$KEEL_ADMIN" | grep -qw sudo ||
-    keel_die "$KEEL_ADMIN does not belong to sudo group."
-  local dest
-  dest="$(keel_session_dest "$KEEL_SESSION")"
-  if [[ "$KEEL_TS" == yes ]]; then
-    keel_is_tailscale_ip "$dest" ||
-      keel_die "SSH destination $dest is not this host's Tailscale IP."
-  fi
-  # sudo -v in the unprivileged wrapper has already proved sudo.
-}
-
 keel_verify() {
+  keel_no_pending
   keel_verify_identity
-  keel_setup_dirs
-  printf '%s\n' "$KEEL_SESSION" > "$KEEL_STATE/verified-session"
-  date +%s > "$KEEL_STATE/verified"
-  chmod 600 "$KEEL_STATE/verified" "$KEEL_STATE/verified-session"
-  keel_log "Verified: new SSH login, administrator account and sudo."
-  echo "Next: keel secure (from the new administrator's SSH session)."
+  if [[ ! -f "$KEEL_STATE/prepared" ]] || ! keel_after_boundary "$KEEL_STATE/prepared"; then
+    keel_die 'Preparation or intent changed. Re-run init, then establish a new SSH connection.'
+  fi
+  keel_atomic_write "$KEEL_STATE/verified" "$(keel_boot_id) $(keel_ticks) $(keel_config_digest) $KEEL_CONNECTION_ID $KEEL_LOCAL_PORT"
+  keel_log 'Verified selected SSH authentication and successful sudo execution.'
+  echo 'Next: keel secure from this connection.'
 }
-
 keel_firewall_preflight() {
-  local added
-  added="$(ufw show added 2>/dev/null | grep '^ufw ' || true)"
-  if [[ -n "$added" ]]; then
-    keel_warn "Existing UFW rules require manual review:"
-    printf '%s\n' "$added"
-    keel_die "Refusing to overwrite or combine unknown firewall rules."
-  fi
-  grep -qx 'IPV6=yes' /etc/default/ufw ||
-    keel_die "Enable IPv6 in /etc/default/ufw before securing."
-}
-
-keel_ssh_check() {
-  local effective
-  /usr/sbin/sshd -t || return 1
-  effective="$(/usr/sbin/sshd -T)" || return 1
-  local s
-  for s in \
-    'permitrootlogin no' \
-    'passwordauthentication no' \
-    'kbdinteractiveauthentication no' \
-    'pubkeyauthentication yes'; do
-    grep -qx "$s" <<< "$effective" || return 1
+  local added manager
+  for manager in firewalld.service nftables.service; do
+    if keel_systemctl is-active --quiet "$manager"; then
+      keel_warn "Another firewall manager is active: $manager"
+      return 1
+    fi
   done
+  added="$(keel_ufw show added)" || return 1
+  added="$(grep '^ufw ' <<< "$added" || true)"
+  if [[ -n "$added" ]]; then
+    [[ -f "$KEEL_STATE/managed-rules" && -f "$KEEL_STATE/managed-firewall" && "$(cat "$KEEL_STATE/managed-firewall")" == "$(keel_security_digest)" ]] || {
+      keel_warn 'Existing or changed UFW rules require manual review.'
+      return 1
+    }
+  fi
+  grep -qx 'IPV6=yes' /etc/default/ufw
 }
-
-keel_backup_security() {
-  keel_setup_dirs
-  local stamp
-  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  KEEL_ROLLBACK_DIR="$KEEL_BACKUP/$stamp-$$"
-  install -d -m 700 "$KEEL_ROLLBACK_DIR"
-  if [[ -f "$KEEL_SSH_DROPIN" ]]; then
-    cp -p "$KEEL_SSH_DROPIN" "$KEEL_ROLLBACK_DIR/ssh-dropin"
-    touch "$KEEL_ROLLBACK_DIR/had-ssh"
-  fi
-  cp -a /etc/ufw "$KEEL_ROLLBACK_DIR/ufw"
-  if ufw status | grep -q '^Status: active'; then
-    touch "$KEEL_ROLLBACK_DIR/ufw-was-active"
-  fi
-  printf '%s\n' "$KEEL_ROLLBACK_DIR" > "$KEEL_STATE/pending-rollback"
-  chmod 600 "$KEEL_STATE/pending-rollback"
+keel_desired_rules() {
+  local scope=public rule
+  local -a rules=()
+  [[ "$KEEL_TS" != yes ]] || scope=tailscale
+  {
+    printf '%s %s/tcp\n' "$scope" "$KEEL_LOCAL_PORT"
+    case "$KEEL_PROFILE" in
+      private|tunnel) ;;
+      web) printf 'public 80/tcp\npublic 443/tcp\n' ;;
+      custom)
+        IFS=, read -ra rules <<< "$KEEL_CUSTOM"
+        for rule in "${rules[@]}"; do
+          printf 'public %s/%s\n' "$((10#${rule%/*}))" "${rule#*/}"
+        done ;;
+      *) return 1 ;;
+    esac
+  } | LC_ALL=C sort -u
 }
-
-keel_schedule_rollback() {
-  command -v systemd-run >/dev/null ||
-    keel_die "systemd-run is required for timed rollback."
-  # Timer is scheduled BEFORE restrictive changes.
-  systemd-run --quiet --unit=keel-security-rollback \
-    --on-active=5m /usr/local/bin/keel __rollback ||
-    keel_die "Could not schedule automatic rollback."
+keel_ufw_rule() {
+  local operation="$1" scope="$2" rule="$3"
+  local -a args=()
+  [[ "$scope" =~ ^(public|tailscale)$ ]] && [[ -n "$rule" && "$rule" != *,* ]] && keel_valid_rules "$rule" || return 1
+  case "$operation" in
+    add) args=(allow) ;;
+    delete) args=(--force delete allow) ;;
+    *) return 1 ;;
+  esac
+  if [[ "$scope" == tailscale ]]; then
+    args+=(in on tailscale0 to any port "${rule%/*}" proto "${rule#*/}")
+  else args+=("$rule"); fi
+  keel_ufw "${args[@]}"
 }
-
-keel_rollback() {
-  [[ -f "$KEEL_STATE/pending-rollback" ]] || exit 0
-  local backup
-  backup="$(cat "$KEEL_STATE/pending-rollback")"
-  [[ "$backup" == "$KEEL_BACKUP/"* && -d "$backup/ufw" ]] ||
-    keel_die "Invalid rollback path."
-
-  keel_warn "Restoring pre-hardening SSH and UFW configuration."
-  if [[ -f "$backup/had-ssh" ]]; then
-    cp -p "$backup/ssh-dropin" "$KEEL_SSH_DROPIN"
-  else
-    rm -f "$KEEL_SSH_DROPIN"
+keel_apply_security() {
+  local desired scope rule extra
+  desired="$(keel_desired_rules)" || return 1
+  keel_write_ssh || return 1
+  keel_ssh_check || return 1
+  keel_systemctl reload ssh.service || return 1
+  keel_ufw default deny incoming || return 1
+  keel_ufw default allow outgoing || return 1
+  # Install the replacement management/service access before removing obsolete
+  # Keel-owned rules. Never disable/reset an active firewall during a transition.
+  while read -r scope rule extra; do
+    [[ -z "$extra" ]] && keel_ufw_rule add "$scope" "$rule" || return 1
+  done <<< "$desired"
+  if [[ -f "$KEEL_STATE/managed-rules" ]]; then
+    while read -r scope rule extra; do
+      [[ -z "$extra" ]] || return 1
+      if ! grep -Fqx -- "$scope $rule" <<< "$desired"; then
+        keel_ufw_rule delete "$scope" "$rule" || return 1
+      fi
+    done < "$KEEL_STATE/managed-rules"
   fi
-  if /usr/sbin/sshd -t; then
-    systemctl reload ssh || keel_warn "SSH reload failed during rollback."
-  else
-    keel_warn "SSH configuration validation failed during rollback."
-  fi
-
-  # Restore original UFW files and status (preflight rejects custom rules).
-  ufw --force disable || true
-  cp -a "$backup/ufw/." /etc/ufw/
-  if [[ -f "$backup/ufw-was-active" ]]; then
-    ufw --force enable || keel_warn "UFW enable failed during rollback."
-  fi
-
-  rm -f "$KEEL_STATE/pending-rollback" \
-    "$KEEL_STATE/secure-session" "$KEEL_STATE/secured"
-  keel_warn "Rollback complete. Inspect SSH and UFW before retrying."
+  keel_ufw --force enable || return 1
+  keel_ufw status | grep -q '^Status: active'
 }
-
 keel_secure() {
   keel_verify_identity
-  [[ -f "$KEEL_STATE/verified" ]] ||
-    keel_die "Run 'keel verify' from a new SSH session first."
-  local verified_at now
-  verified_at="$(cat "$KEEL_STATE/verified")"
-  now="$(date +%s)"
-  [[ "$verified_at" =~ ^[0-9]+$ ]] ||
-    keel_die "Invalid verification state."
-  (( now >= verified_at && now - verified_at <= 3600 )) ||
-    keel_die "Verification expired; run keel verify again."
-  [[ ! -f "$KEEL_STATE/pending-rollback" ]] ||
-    keel_die "A rollback is already pending. Use keel confirm or wait."
-
-  if [[ -f "$KEEL_STATE/secured" ]]; then
-    keel_log "Already secured. Run keel doctor to audit the configuration."
-    return
+  keel_no_pending
+  local boot ticks digest connection port extra now
+  [[ -f "$KEEL_STATE/verified" ]] || keel_die 'Run keel verify first.'
+  read -r boot ticks digest connection port extra < "$KEEL_STATE/verified"
+  now="$(keel_ticks)"
+  [[ -z "$extra" && "$ticks" =~ ^[0-9]+$ && "$boot" == "$(keel_boot_id)" &&
+     "$digest" == "$(keel_config_digest)" && "$connection" == "$KEEL_CONNECTION_ID" &&
+     "$port" == "$KEEL_LOCAL_PORT" ]] || keel_die 'Verification is stale or belongs to another connection. Run keel verify.'
+  (( now >= ticks && now - ticks <= 3600 * $(getconf CLK_TCK) )) || keel_die 'Verification expired.'
+  if [[ -f "$KEEL_STATE/secured" && "$(cat "$KEEL_STATE/secured")" == "$digest" ]] &&
+     keel_ssh_check && [[ "$(cat "$KEEL_STATE/managed-firewall")" == "$(keel_security_digest)" ]]; then
+    keel_log 'Intended SSH/firewall configuration is already applied.'
+    return 0
   fi
-
-  local home
-  home="$(getent passwd "$KEEL_ADMIN" | cut -d: -f6)"
+  keel_ssh_preflight || keel_die 'Unsupported SSH Include/Match/service configuration; see docs/security.md.'
   if [[ "$KEEL_TS_MODE" == openssh ]]; then
-    [[ -s "$home/.ssh/authorized_keys" ]] ||
-      keel_die "No administrator authorized_keys; refusing password lockout."
+    keel_listener_check || keel_die 'Verified port is not an active OpenSSH listener.'
   fi
-  if [[ "$KEEL_TS" == yes ]]; then
-    [[ -n "$(tailscale ip -4)" ]] ||
-      keel_die "Tailscale is offline."
+  keel_firewall_preflight || keel_die 'UFW preflight failed; review existing rules and IPv6 configuration.'
+  echo 'Security plan: disable root/password/keyboard-interactive OpenSSH login.'
+  printf 'Public management access: %s; verified SSH port: %s\n' "$([[ "$KEEL_TS" == yes ]] && echo closed || echo key-only)" "$KEEL_LOCAL_PORT"
+  printf 'Public application profile: %s (%s)\n' "$KEEL_PROFILE" "${KEEL_CUSTOM:-no custom ports}"
+  echo 'UFW will deny inbound and allow outbound. Tailscale grants and Docker networking are separate controls.'
+  echo 'Recovery deadline: five minutes. Keep this connection and rescue-console access available.'
+  keel_yes 'Apply these changes?' || return 0
+  keel_backup_security || keel_die 'Backup failed; restrictive changes were not applied.'
+  if ! keel_schedule_rollback; then
+    keel_abort_unarmed || keel_die 'Scheduling failed; run sudo keel rollback to clear recovery state.'
+    keel_die 'Recovery could not be armed; no restrictive changes applied. Retry secure.'
   fi
-
-  keel_firewall_preflight
-  echo
-  echo "Security plan:"
-  echo "- Disable root/password/keyboard-interactive SSH logins"
-  echo "- UFW: deny inbound, allow outbound"
-  echo "- SSH: $([[ "$KEEL_TS" == yes ]] && echo 'Tailscale only' || echo 'public TCP 22 (key-only)')"
-  echo "- Services: $KEEL_PROFILE (custom: ${KEEL_CUSTOM:-none})"
-  echo "- Automatic rollback in FIVE minutes unless confirmed from a new connection"
-  echo "- Existing Docker-published ports may bypass UFW!"
-  echo
-  keel_yes "Apply security changes? Keep the current SSH session open." || return 0
-
-  keel_log "Backing up SSH and firewall and scheduling rollback"
-  keel_backup_security
-  keel_schedule_rollback
-  printf '%s\n' "$KEEL_SESSION" > "$KEEL_STATE/secure-session"
-
-  # Use a drop-in that is loaded early (Ubuntu's default includes drop-ins
-  # before main-file settings). Never rewrite the distribution's SSH file.
-  cat > "$KEEL_SSH_DROPIN" <<'SSHD'
-PermitRootLogin no
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-PubkeyAuthentication yes
-SSHD
-  if ! keel_ssh_check; then
-    keel_rollback
-    keel_die "Effective SSH settings failed validation; restored originals."
+  trap 'keel_transaction_exit $?' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM HUP
+  keel_transaction_phase applying
+  if ! keel_apply_security; then
+    keel_rollback || keel_die 'Apply and recovery failed; use rescue console.'
+    keel_die 'Apply failed; previous SSH/firewall settings restored.'
   fi
-  if ! systemctl reload ssh; then
-    keel_rollback
-    keel_die "Failed to reload SSH; restored originals."
+  if (( $(keel_ticks) >= $(cat "$KEEL_TX/deadline") )); then
+    keel_rollback || keel_die 'Apply exceeded the deadline and recovery failed; use rescue console.'
+    keel_die 'Apply exceeded the recovery window; previous settings restored.'
   fi
-
-  ufw default deny incoming
-  ufw default allow outgoing
-  if [[ "$KEEL_TS" == yes ]]; then
-    ufw allow in on tailscale0
-  else
-    ufw allow 22/tcp
-  fi
-  case "$KEEL_PROFILE" in
-    private|tunnel) ;;
-    web)
-      ufw allow 80/tcp
-      ufw allow 443/tcp
-      ;;
-    custom)
-      local rule
-      local -a rules=()
-      IFS=, read -ra rules <<< "$KEEL_CUSTOM"
-      for rule in "${rules[@]}"; do
-        ufw allow "$rule"
-      done
-      ;;
-    *) keel_rollback; keel_die "Unknown firewall profile." ;;
-  esac
-  if ! ufw --force enable; then
-    keel_rollback
-    keel_die "Failed to enable UFW; restored originals."
-  fi
-
-  keel_log "Hardening applied; rollback is armed for five minutes"
-  echo "Open a DIFFERENT, NEW SSH connection and run: keel confirm"
-  echo "That new connection MUST succeed before rollback is cancelled."
+  keel_atomic_write "$KEEL_TX/applied-boundary" "$(keel_record_boundary)"
+  keel_atomic_write "$KEEL_TX/applied-digest" "$(keel_security_digest)"
+  keel_transaction_phase awaiting_confirmation
+  keel_log 'Changes applied; recovery remains armed.'
+  echo 'Establish a NEW connection (disable SSH multiplexing), then run: keel confirm'
 }
-
 keel_confirm() {
   keel_verify_identity
-  [[ -f "$KEEL_STATE/pending-rollback" ]] ||
-    keel_die "No pending security change to confirm."
-  [[ -f "$KEEL_STATE/secure-session" ]] ||
-    keel_die "Missing security session state."
-  [[ "$KEEL_SESSION" != "$(cat "$KEEL_STATE/secure-session")" ]] ||
-    keel_die "Confirmation must come from a different SSH connection."
-  keel_ssh_check || keel_die "SSH settings are not hardened."
-  ufw status | grep -q '^Status: active' ||
-    keel_die "UFW is not active."
-  rm -f "$KEEL_STATE/pending-rollback" "$KEEL_STATE/secure-session"
-  touch "$KEEL_STATE/secured"
-  chmod 600 "$KEEL_STATE/secured"
-  systemctl stop keel-security-rollback.timer 2>/dev/null || true
-  keel_log "New SSH connection verified. Rollback cancelled."
-  echo "Server is secured. Run: sudo keel doctor"
+  keel_transaction_load || keel_die 'No pending transaction.'
+  [[ "$KEEL_TX_PHASE" == awaiting_confirmation ]] || keel_die "Cannot confirm phase $KEEL_TX_PHASE; run sudo keel status."
+  local deadline
+  deadline="$(cat "$KEEL_TX/deadline")"
+  [[ "$deadline" =~ ^[0-9]+$ && "$(cat "$KEEL_TX/boot")" == "$(keel_boot_id)" ]] || keel_die 'Invalid or prior-boot transaction; recover it.'
+  (( $(keel_ticks) < deadline )) || keel_die 'Recovery deadline expired; run sudo keel rollback.'
+  [[ "$(cat "$KEEL_TX/management-port")" == "$KEEL_LOCAL_PORT" ]] || keel_die 'Confirm using the management port verified before hardening.'
+  keel_after_boundary "$KEEL_TX/applied-boundary" || keel_die 'Confirmation requires a connection authenticated after hardening completed, with unchanged intent.'
+  keel_ssh_check || keel_die 'SSH policy validation failed; recovery remains armed.'
+  [[ "$(cat "$KEEL_TX/applied-digest")" == "$(keel_security_digest)" ]] || keel_die 'Applied firewall/SSH configuration changed; recover and retry.'
+  # The terminal decision is durable before timer/pending cleanup. A service
+  # already waiting for the lock sees committed and must not restore the backup.
+  (( $(keel_ticks) < deadline )) || keel_die 'Recovery deadline expired during validation; recovery remains armed.'
+  keel_transaction_phase committed
+  keel_atomic_write "$KEEL_STATE/secured" "$(keel_config_digest)"
+  keel_atomic_write "$KEEL_STATE/managed-rules" "$(keel_desired_rules)"
+  keel_atomic_write "$KEEL_STATE/managed-firewall" "$(keel_security_digest)"
+  rm -f "$KEEL_STATE/pending"
+  keel_cancel_timer
+  keel_log 'Post-change SSH access confirmed. Recovery cancelled.'
+  echo 'Run sudo keel doctor for observed state and remaining limitations.'
 }
-
 keel_enable_tailscale_ssh() {
+  keel_no_pending
   keel_load_config
-  [[ "$KEEL_TS" == yes && "$KEEL_TS_MODE" == tailscale-ssh ]] ||
-    keel_die "Tailscale SSH was not selected in the configuration."
-  echo "Confirm the tailnet SSH ACL allows your login as $KEEL_ADMIN."
-  keel_yes "Enable Tailscale SSH? An existing session can be interrupted." || return 0
+  [[ "$KEEL_TS" == yes && "$KEEL_TS_MODE" == tailscale-ssh ]] || keel_die 'Tailscale SSH is not selected.'
+  if [[ -f "$KEEL_STATE/managed-firewall" ]] && ! tailscale debug prefs | jq -e '.RunSSH == true' >/dev/null; then
+    # Reconfiguration must not switch the only known working SSH server out
+    # from under an already-hardened host. A verified public key path survives.
+    KEEL_TS_MODE=openssh
+    if ! keel_session_evidence || keel_is_tailscale_ip "$KEEL_LOCAL_IP"; then
+      keel_die 'Before switching a hardened host to Tailscale SSH, establish public key-only recovery access from the console, connect through it, then retry.'
+    fi
+    KEEL_TS_MODE=tailscale-ssh
+  fi
+  echo 'Configure the tailnet network and SSH policies for this administrator first.'
+  echo 'Enabling Tailscale SSH can interrupt existing tailnet SSH sessions.'
+  keel_yes 'Enable Tailscale SSH? Keep public SSH/recovery-console access.' || return 0
   tailscale set --ssh
+  rm -f "$KEEL_STATE/verified" "$KEEL_STATE/secured"
+  keel_atomic_write "$KEEL_STATE/prepared" "$(keel_record_boundary)"
+  echo 'Establish a new Tailscale SSH connection, then run keel verify.'
 }
