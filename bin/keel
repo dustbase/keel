@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+# readlink -f handles the installed symlink and relative/chained symlinks.
+KEEL_EXECUTABLE="$(readlink -f -- "${BASH_SOURCE[0]}")"
+KEEL_HOME="$(cd -- "$(dirname -- "$KEEL_EXECUTABLE")/.." && pwd -P)"
+# shellcheck source=lib/common.sh
+source "$KEEL_HOME/lib/common.sh"
+# shellcheck source=lib/keys.sh
+source "$KEEL_HOME/lib/keys.sh"
+# shellcheck source=lib/prepare.sh
+source "$KEEL_HOME/lib/prepare.sh"
+# shellcheck source=lib/session.sh
+source "$KEEL_HOME/lib/session.sh"
+# shellcheck source=lib/ssh.sh
+source "$KEEL_HOME/lib/ssh.sh"
+# shellcheck source=lib/transaction.sh
+source "$KEEL_HOME/lib/transaction.sh"
+# shellcheck source=lib/security.sh
+source "$KEEL_HOME/lib/security.sh"
+# shellcheck source=lib/doctor.sh
+source "$KEEL_HOME/lib/doctor.sh"
+usage() {
+  cat <<'USAGE'
+Keel — bootstrap and secure Ubuntu servers (experimental v0.1)
+
+Usage:
+  keel init          Interactive preparation, preserve existing access
+  keel verify        Verify selected SSH authentication and sudo
+  keel secure        Apply hardening with timed automatic rollback
+  keel confirm       Confirm a post-change connection and cancel rollback
+  keel doctor        Read-only configuration report (sudo)
+  keel status        Read-only transaction status (sudo)
+  keel rollback      Restore a pending transaction (sudo)
+  keel tailscale-ssh Enable Tailscale SSH before verification (sudo)
+  keel help
+
+Start from a reviewed checkout: sudo bash ./bin/keel init
+Run verify/secure/confirm WITHOUT sudo from the intended administrator login.
+USAGE
+}
+command="${1:-help}"
+case "$command" in
+  help|-h|--help) usage ;;
+  init)
+    keel_require_root
+    keel_require_ubuntu
+    keel_lock
+    keel_no_pending
+    if [[ "$KEEL_HOME" != /opt/keel ]]; then
+      keel_install_self "$KEEL_HOME"
+      exec {KEEL_LOCK_FD}>&-
+      exec /opt/keel/bin/keel init
+    fi
+    keel_init ;;
+  verify|secure|confirm)
+    (( EUID != 0 )) || keel_die "Run keel $command without sudo from the administrator SSH login."
+    sudo -v
+    exec sudo -- /usr/local/bin/keel "__$command" ;;
+  __verify|__secure|__confirm)
+    keel_require_root
+    keel_require_ubuntu
+    keel_lock
+    case "$command" in
+      __verify) keel_verify ;;
+      __secure) keel_secure ;;
+      __confirm) keel_confirm ;;
+    esac ;;
+  tailscale-ssh)
+    keel_require_root
+    keel_lock
+    keel_enable_tailscale_ssh ;;
+  doctor)
+    keel_require_root
+    keel_doctor ;;
+  status)
+    keel_require_root
+    keel_status ;;
+  rollback|__rollback|__recover-boot)
+    keel_require_root
+    keel_lock
+    keel_rollback "${2:-}" ;;
+  *) usage; exit 2 ;;
+esac

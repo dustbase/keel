@@ -1,0 +1,8 @@
+*.swp
+.DS_Store
+.env
+*.key
+*.pem
+
+# Local handoff archives and evidence
+/.keel-local/
