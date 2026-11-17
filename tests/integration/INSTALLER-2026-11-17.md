@@ -7,11 +7,23 @@ do not establish Ubuntu 24.04/26.04 acceptance, which remains deferred.
 
 ## Fixture and static checks
 
-The full smoke suite, 22 existing regression groups, five installer fixture groups,
-and ShellCheck passed both in CI and on the authorized guest. Bootstrap fixtures
+The full smoke suite, 22 existing regression groups, initial five installer fixture
+groups, and ShellCheck passed both in CI and on the authorized guest. After review,
+the guest passed the full suite and ShellCheck again with a sixth installer group.
+Bootstrap fixtures
 cover ordinary/malformed/legacy pending markers, checksum acceptance/rejection,
 archive traversal and links, exact runtime comparison, missing/extra modules,
 and staging cleanup including namespace/symlink guards.
+
+The review fix replaces the pinned helper's unchecked copies with an explicitly
+checked bootstrap publisher. It stages and compares the full runtime beside the
+destination, then publishes it with one rename before creating the command link.
+Conditional-call fixtures inject directory, entrypoint and module copy failures,
+plus a TERM interruption: none publishes a partial runtime or command, staging is
+removed, and a retry succeeds. Command-link failure propagates a nonzero result
+while retaining a complete matching runtime that a repeat installation can repair.
+The live installation/refusal/repeat checks below were rerun successfully with
+this fixed publisher, and the original guest runtime was again restored exactly.
 
 The installer pins runtime commit `f94dac7c1dc34b458e1929122dab0a3e2fbc1ee7` and
 archive SHA-256 `c0c9618678f8d45e991ed272188cda0755d3c60602f1c81a53fd370b10688534`.

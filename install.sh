@@ -61,6 +61,24 @@ ki_existing_matches() {
     cmp -s "$source/lib/$module.sh" "$target/lib/$module.sh" || return 1
   done
 }
+ki_install_runtime() (
+  # Build beside the destination so publication is one same-filesystem rename.
+  # Every operation is checked: callers may invoke this function conditionally.
+  local source="$1" target="$2" command_link="$3" stage=''
+  trap 'if [[ -n "$stage" ]]; then rm -rf -- "$stage"; fi' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' HUP TERM
+  [[ ! -e "$target" && ! -L "$target" ]] || return 1
+  stage="$(mktemp -d "${target%/*}/.keel-install.XXXXXXXXXX")" || return 1
+  install -d -m 755 "$stage/bin" "$stage/lib" || return 1
+  install -m 755 "$source/bin/keel" "$stage/bin/keel" || return 1
+  install -m 644 "$source/lib/"*.sh "$stage/lib/" || return 1
+  ki_existing_matches "$source" "$stage" || return 1
+  chmod 755 "$stage" || return 1
+  mv -T "$stage" "$target" || return 1
+  stage=''
+  ln -sfn "$target/bin/keel" "$command_link" || return 1
+)
 ki_main() {
   local init=no arg command payload module
   for arg in "$@"; do
@@ -82,7 +100,7 @@ ki_main() {
       ki_die '--init needs a terminal. Install without it, then run sudo keel init interactively.'; return 1
     fi
   fi
-  for command in curl tar sha256sum flock readlink stat install find cmp timeout; do
+  for command in curl tar sha256sum flock readlink stat install find cmp timeout chmod mv; do
     command -v "$command" >/dev/null || { ki_die "Required command missing: $command"; return 1; }
   done
   ki_no_pending /var/lib/keel || return 1
@@ -121,7 +139,8 @@ ki_main() {
     ln -sfn /opt/keel/bin/keel /usr/local/bin/keel || return 1
     printf 'The pinned runtime is already installed.\n'
   else
-    keel_install_self "$payload" || return 1
+    keel_trusted_path /opt || { ki_die 'Untrusted /opt.'; return 1; }
+    ki_install_runtime "$payload" /opt/keel /usr/local/bin/keel || return 1
     printf 'Installed Keel at /usr/local/bin/keel.\n'
   fi
   exec {KEEL_LOCK_FD}>&-

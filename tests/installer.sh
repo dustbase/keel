@@ -57,6 +57,39 @@ reject ki_validate_payload "$scratch/installed"
 touch "$source_dir/lib/extra.sh"
 reject ki_validate_payload "$source_dir"
 printf 'PASS: installer exact runtime matching, missing/extra files and symlinks\n'
+rm "$source_dir/lib/extra.sh"
+
+# Exercise the actual publisher inside a conditional, where Bash disables errexit.
+for failure in directories entrypoint modules interrupted; do
+  destination="$scratch/publish-$failure"
+  mkdir "$destination"
+  (
+    install() {
+      case "$failure:$*" in
+        directories:*-d*|entrypoint:*755*bin/keel*|modules:*644*) return 1 ;;
+        interrupted:*644*) kill -TERM "$BASHPID"; return 1 ;;
+      esac
+      command install "$@"
+    }
+    reject ki_install_runtime "$source_dir" "$destination/runtime" "$destination/keel"
+  )
+  [[ ! -e "$destination/runtime" && ! -L "$destination/keel" ]] ||
+    fail "Failed $failure installation published a runtime or command."
+  [[ -z "$(find "$destination" -mindepth 1 -maxdepth 1 -print -quit)" ]] ||
+    fail "Failed $failure installation left staging behind."
+  ki_install_runtime "$source_dir" "$destination/runtime" "$destination/keel"
+  ki_existing_matches "$source_dir" "$destination/runtime"
+  [[ "$(readlink "$destination/keel")" == "$destination/runtime/bin/keel" ]] || fail 'Missing installed command.'
+done
+destination="$scratch/publish-link-failure"
+mkdir "$destination"
+(
+  ln() { return 1; }
+  reject ki_install_runtime "$source_dir" "$destination/runtime" "$destination/keel"
+)
+ki_existing_matches "$source_dir" "$destination/runtime"
+[[ ! -L "$destination/keel" ]] || fail 'Failed link operation unexpectedly published a command.'
+printf 'PASS: installer copy failures, interruption, retry and link failure propagation\n'
 
 KI_WORK="$(mktemp -d /tmp/keel-install.fixture.XXXXXXXXXX)"
 touch "$KI_WORK/partial-download"
