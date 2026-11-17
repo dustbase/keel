@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# Public bootstrap: installs a reviewed runtime; never applies hardening.
+set -Eeuo pipefail
+umask 077
+readonly KI_REF=f94dac7c1dc34b458e1929122dab0a3e2fbc1ee7
+readonly KI_SHA256=c0c9618678f8d45e991ed272188cda0755d3c60602f1c81a53fd370b10688534
+readonly KI_URL="https://codeload.github.com/dustbase/keel/tar.gz/$KI_REF"
+readonly KI_ROOT="keel-$KI_REF"
+KI_MODULES=(common doctor keys prepare security session ssh transaction)
+KI_WORK=''
+ki_die() { printf 'ERROR: %s\n' "$*" >&2; return 1; }
+ki_cleanup() {
+  if [[ "$KI_WORK" == /tmp/keel-install.* && -d "$KI_WORK" && ! -L "$KI_WORK" ]]; then
+    rm -rf -- "$KI_WORK"
+  fi
+}
+ki_no_pending() {
+  local state="$1" marker
+  for marker in pending pending-rollback; do
+    [[ ! -e "$state/$marker" && ! -L "$state/$marker" ]] ||
+      { ki_die 'Recovery is pending. Recover with the installed runtime before installing.'; return 1; }
+  done
+}
+ki_verify_download() {
+  local actual
+  actual="$(sha256sum "$1")" || return 1
+  [[ "${actual%% *}" == "$KI_SHA256" ]] ||
+    { ki_die 'Downloaded archive checksum mismatch; nothing installed.'; return 1; }
+}
+ki_validate_archive() {
+  local listing types entry
+  listing="$(tar -tzf "$1")" || return 1
+  types="$(tar -tvzf "$1")" || return 1
+  while IFS= read -r entry; do
+    case "$entry" in
+      "$KI_ROOT/"*) ;;
+      *) ki_die 'Unexpected archive root.'; return 1 ;;
+    esac
+    case "/$entry" in */../*|*/./*) ki_die 'Unsafe archive path.'; return 1 ;; esac
+  done <<< "$listing"
+  while IFS= read -r entry; do
+    case "${entry:0:1}" in -|d) ;; *) ki_die 'Archive links and special files are not supported.'; return 1 ;; esac
+  done <<< "$types"
+}
+ki_validate_payload() {
+  local source="$1" module count
+  [[ -f "$source/bin/keel" && ! -L "$source/bin/keel" && -d "$source/lib" && ! -L "$source/lib" ]] || return 1
+  for module in "${KI_MODULES[@]}"; do
+    [[ -f "$source/lib/$module.sh" && ! -L "$source/lib/$module.sh" ]] || return 1
+  done
+  count="$(find "$source/lib" -mindepth 1 -maxdepth 1 | wc -l)" || return 1
+  (( count == ${#KI_MODULES[@]} ))
+}
+ki_existing_matches() {
+  local source="$1" target="$2" module
+  [[ ! -L "$target" && ! -L "$target/bin" && ! -L "$target/lib" &&
+     -f "$target/bin/keel" && ! -L "$target/bin/keel" ]] || return 1
+  ki_validate_payload "$target" || return 1
+  cmp -s "$source/bin/keel" "$target/bin/keel" || return 1
+  for module in "${KI_MODULES[@]}"; do
+    cmp -s "$source/lib/$module.sh" "$target/lib/$module.sh" || return 1
+  done
+}
+ki_main() {
+  local init=no arg command payload module
+  for arg in "$@"; do
+    case "$arg" in
+      --init) init=yes ;;
+      -h|--help)
+        printf 'Usage: install.sh [--init]\nInstalls pinned experimental Keel. --init starts interactive preparation only.\n'
+        return 0 ;;
+      *) ki_die "Unknown option: $arg"; return 1 ;;
+    esac
+  done
+  (( EUID == 0 )) || { ki_die 'Run with sudo bash (or as root).'; return 1; }
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  [[ "$ID" == ubuntu && "$VERSION_ID" =~ ^(24\.04|26\.04)$ ]] ||
+    { ki_die 'Supported releases: Ubuntu 24.04 and 26.04 LTS.'; return 1; }
+  if [[ "$init" == yes ]]; then
+    if ! ( : </dev/tty ) 2>/dev/null; then
+      ki_die '--init needs a terminal. Install without it, then run sudo keel init interactively.'; return 1
+    fi
+  fi
+  for command in curl tar sha256sum flock readlink stat install find cmp timeout; do
+    command -v "$command" >/dev/null || { ki_die "Required command missing: $command"; return 1; }
+  done
+  ki_no_pending /var/lib/keel || return 1
+  # Ignore caller TMPDIR: the staging parent must not be replaceable by that user.
+  KI_WORK="$(mktemp -d /tmp/keel-install.XXXXXXXXXX)" || return 1
+  trap ki_cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' HUP TERM
+  printf 'Downloading experimental Keel runtime %s\n' "$KI_REF"
+  curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --location --silent --show-error \
+    --connect-timeout 15 --max-time 120 "$KI_URL" -o "$KI_WORK/runtime.tar.gz" || return 1
+  ki_verify_download "$KI_WORK/runtime.tar.gz" || return 1
+  ki_validate_archive "$KI_WORK/runtime.tar.gz" || return 1
+  tar -xzf "$KI_WORK/runtime.tar.gz" -C "$KI_WORK" --no-same-owner --no-same-permissions \
+    "$KI_ROOT/bin" "$KI_ROOT/lib" || return 1
+  payload="$KI_WORK/$KI_ROOT"
+  ki_validate_payload "$payload" || { ki_die 'Incomplete runtime archive.'; return 1; }
+  # shellcheck disable=SC2034 # Used by the downloaded installation module.
+  KEEL_HOME="$payload"
+  # This code is loaded only after verifying the pinned archive checksum.
+  # shellcheck disable=SC1091
+  source "$payload/lib/common.sh"
+  keel_lock || return 1
+  ki_no_pending /var/lib/keel || return 1
+  keel_trusted_path /usr/local/bin || { ki_die 'Untrusted /usr/local/bin.'; return 1; }
+  if [[ -e /usr/local/bin/keel || -L /usr/local/bin/keel ]]; then
+    [[ -L /usr/local/bin/keel && "$(readlink /usr/local/bin/keel)" == /opt/keel/bin/keel ]] ||
+      { ki_die 'Existing keel command is not the expected installation; nothing replaced.'; return 1; }
+  fi
+  if [[ -e /opt/keel || -L /opt/keel ]]; then
+    ki_existing_matches "$payload" /opt/keel ||
+      { ki_die 'Existing Keel differs from this pin. Use a reviewed checkout for upgrades; nothing replaced.'; return 1; }
+    for module in /opt/keel/bin/keel /opt/keel/lib/*.sh; do
+      keel_trusted_path "$module" || { ki_die 'Untrusted installed runtime.'; return 1; }
+    done
+    ln -sfn /opt/keel/bin/keel /usr/local/bin/keel || return 1
+    printf 'The pinned runtime is already installed.\n'
+  else
+    keel_install_self "$payload" || return 1
+    printf 'Installed Keel at /usr/local/bin/keel.\n'
+  fi
+  exec {KEEL_LOCK_FD}>&-
+  ki_cleanup
+  trap - EXIT INT HUP TERM
+  if [[ "$init" == yes ]]; then
+    exec /opt/keel/bin/keel init </dev/tty
+  fi
+  printf 'Next: sudo keel init\nThen use fresh SSH connections for keel verify, keel secure, and keel confirm.\n'
+}
+# Supports both a downloaded script and curl | sudo bash, while allowing fixture imports.
+if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]}" == "$0" ]]; then
+  ki_main "$@"
+fi
