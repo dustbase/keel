@@ -4,7 +4,8 @@ Status: **Ubuntu 24.04/26.04 release acceptance remains pending**. Exploratory
 checks ran in an explicitly authorized UTM Ubuntu 26.10 VM; see the
 [2026-11-16 results and limits](UTM-2026-11-16.md) and the subsequent
 [live failure tests and key-staging fix](UTM-failures-2026-11-16.md). No real VPS
-was accessed.
+was accessed. The [installer preview checks](INSTALLER-2026-11-17.md) record
+real public download/install/repeat behavior and their OS/transport limitations.
 Unit/fixture tests and 26.10 results do not satisfy the LTS acceptance matrix.
 
 Use disposable Ubuntu 24.04 and 26.04 images with independent serial/console
