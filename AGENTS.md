@@ -14,10 +14,11 @@
   session evidence, resource operations, and transaction coordination. Quote
   expansions, use arrays, avoid eval and executable configuration, and explicitly
   propagate failures in functions called from conditionals.
-- Run `bash tests/run.sh` and `shellcheck -x bin/keel lib/*.sh tests/*.sh`.
+- Run `bash tests/run.sh` and `shellcheck -x install.sh bin/keel lib/*.sh tests/*.sh`.
   Add regression tests for safety fixes, including negative and interrupted paths.
   Tests must use temporary fixtures/mocks unless explicitly running the VM suite.
 - Never run init/secure/recovery against the development host or a real VPS.
   Network integration tests require disposable VMs with out-of-band recovery.
-- Keep PR #1 draft. Do not merge, release, push, or change PR discussions without
-  authorization. Report VM validation gaps honestly; mocks are not security proof.
+- Do not merge, release, push, or change PR discussions without authorization.
+  Report VM validation gaps honestly; mocks are not security proof. Do not claim
+  LTS release acceptance until the supported-VM matrix has passed.

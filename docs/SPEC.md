@@ -93,3 +93,16 @@ custom listener ports, socket activation, old/multiplexed connections, Tailscale
 policy denial/expiry, UFW interactions, Docker warnings, timer/partial failure,
 reboot while pending, confirm/rollback races, and repeat execution. Record actual
 results and remaining gaps. Lint and mocked tests do not satisfy VM acceptance.
+
+## Installer preview (v0.2 distribution work)
+
+A public Bash bootstrap may install a reviewed, pinned full runtime archive after
+checking an embedded SHA-256. Reject unsupported releases, malformed archives,
+untrusted targets, unrelated command collisions, different installed versions,
+and pending/legacy recovery before replacing runtime files. Recheck pending state
+under the common mutation lock. Matching trusted installs are idempotent.
+
+Installation does not apply SSH/firewall/account policy. An explicit --init option
+may start additive preparation on a real terminal after installation and lock
+release. Verify, secure, and confirm remain explicit fresh-login operations. The
+installer is experimental until supported-release acceptance passes.

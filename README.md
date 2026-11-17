@@ -11,6 +11,32 @@ profiles with guarded SSH changes.
 > validation remain required. Do not use this draft on production servers.
 > Timed recovery cannot replace provider rescue-console access.
 
+## Public installer preview
+
+On a disposable Ubuntu 24.04/26.04 VM with working SSH and console recovery:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dustbase/keel/main/install.sh | sudo bash -s -- --init
+```
+
+This is an experimental installer preview, not completed LTS acceptance. The
+bootstrap downloads a pinned commit archive, checks its embedded SHA-256 before
+extraction or loading code, and installs the complete runtime. `--init` then starts
+interactive preparation using your terminal. It never automatically verifies,
+hardens, or confirms access. Those steps still require fresh SSH connections below.
+
+For installation only, omit `--init` and later run `sudo keel init`. For review
+before execution, download `install.sh`, inspect it, then run `sudo bash install.sh --init` from an interactive terminal. The checksum verifies the payload; the
+bootstrap itself remains code you must trust/review. Install `curl` first if it is
+not already available.
+
+Pending recovery blocks installation. Repeating the installer with an exact
+matching, trusted runtime is a no-op apart from repairing its command symlink.
+A different existing runtime or unrelated `keel` command is refused without
+replacement; upgrades still require a reviewed checkout. The preview's runtime
+pin is `f94dac7c1dc34b458e1929122dab0a3e2fbc1ee7`; updating it requires reviewing
+the new runtime and updating its archive checksum together.
+
 ## Getting started
 
 Review a pinned revision before running code as root:
@@ -129,7 +155,7 @@ the complete disposable-VM acceptance matrix.
 
 ```bash
 bash tests/run.sh
-shellcheck -x bin/keel lib/*.sh tests/*.sh
+shellcheck -x install.sh bin/keel lib/*.sh tests/*.sh
 ```
 
 The regression suite uses temporary files and mocked host commands, never host
