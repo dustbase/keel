@@ -50,7 +50,7 @@ no-op apart from repairing its command symlink. Untrusted layouts or unrelated
 `keel` commands are refused. Automatic updates require Python 3 and Linux atomic
 directory exchange; Keel refuses an unsupported exchange instead of replacing
 files sequentially. The preview's runtime
-pin is `bf38141fe2a7b7bfa4d5f6940ed5ed8052fd73b3`; updating it requires reviewing
+pin is `5c4d61a737102dd09971eae09a39b15ab6f2a7e2`; updating it requires reviewing
 the new runtime and updating its archive checksum together.
 
 Updates preserve settings, accounts, keys, and SSH/firewall configuration, and

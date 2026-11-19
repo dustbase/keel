@@ -195,7 +195,7 @@ keel_doctor() {
   keel_ui_section Configuration
   keel_ui_field Administrator "$KEEL_ADMIN"
   keel_ui_field 'Application profile' "$KEEL_PROFILE"
-  keel_ui_field Authentication "$KEEL_TS_MODE"
+  keel_ui_field Authentication "$(keel_access_label "$KEEL_TS" "$KEEL_TS_MODE")"
   keel_ui_section 'SSH and firewall'
   # Diagnostic contexts are local samples, never global evidence for Match rules.
   # shellcheck disable=SC2034

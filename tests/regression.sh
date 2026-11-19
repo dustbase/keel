@@ -15,7 +15,7 @@ source lib/ssh.sh
 source lib/transaction.sh
 # shellcheck source=lib/security.sh
 source lib/security.sh
-cases=(entrypoint config keys key_staging boundary openssh_evidence tailscale_evidence tailscale_pty digest_locale ssh_checks listener firewall_preflight \
+cases=(entrypoint config keys key_staging boundary verify_boundary openssh_evidence tailscale_evidence tailscale_pty digest_locale ssh_checks listener firewall_preflight \
   backup_restore scheduling partial_apply confirmation rollback_failure rollback_race interruption stale_verification public_port concurrency)
 if [[ "${1:-}" == --list ]]; then printf '%s\n' "${cases[@]}"; exit 0; fi
 scratch="$(mktemp -d)"
@@ -185,6 +185,47 @@ test_boundary() {
   fixture_config
   keel_boot_id() { echo boot-B; }
   expect_fail keel_after_boundary "$scratch/boundary"
+}
+test_verify_boundary() {
+  fixture_config
+  keel_boot_id() { echo boot-A; }
+  keel_ticks() { echo 200; }
+  local connection=100 digest
+  digest="$(keel_config_digest)"
+  keel_verify_identity() { KEEL_CONNECTION_START="$connection"; KEEL_CONNECTION_ID=conn; }
+  keel_init() { fail 'Verification attempted to rerun preparation.'; }
+  printf 'boot-A 100 %s\n' "$digest" > "$KEEL_STATE/prepared"
+  if ( keel_verify ) > "$scratch/error" 2>&1; then fail 'Same-boundary connection verified.'; fi
+  grep -q 'SSH connection predates' "$scratch/error"
+  grep -q 'Do not rerun init solely' "$scratch/error"
+  grep -q 'On your computer.*ssh -o ControlMaster=no -o ControlPath=none -p 2222 admin@node' "$scratch/error"
+  grep -q 'In the new login.*keel verify' "$scratch/error"
+  [[ ! -e "$KEEL_STATE/verified" ]] || fail 'Old connection wrote verification.'
+  connection=99
+  expect_fail keel_verify
+  connection=101
+  keel_verify
+  [[ -s "$KEEL_STATE/verified" ]] || fail 'Fresh connection did not verify.'
+  rm "$KEEL_STATE/verified"
+  printf 'boot-A 100 changed-intent\n' > "$KEEL_STATE/prepared"
+  if ( keel_verify ) > "$scratch/error" 2>&1; then fail 'Changed intent verified.'; fi
+  grep -q 'Prepared settings differ' "$scratch/error"
+  printf 'boot-B 100 %s\n' "$digest" > "$KEEL_STATE/prepared"
+  if ( keel_verify ) > "$scratch/error" 2>&1; then fail 'Prior-boot preparation verified.'; fi
+  grep -q 'different boot' "$scratch/error"
+  printf 'boot-A invalid %s\n' "$digest" > "$KEEL_STATE/prepared"
+  if ( keel_verify ) > "$scratch/error" 2>&1; then fail 'Malformed preparation verified.'; fi
+  grep -q 'evidence is malformed' "$scratch/error"
+  rm "$KEEL_STATE/prepared"
+  if ( keel_verify ) > "$scratch/error" 2>&1; then fail 'Missing preparation verified.'; fi
+  grep -q 'No completed preparation' "$scratch/error"
+  [[ ! -e "$KEEL_STATE/verified" ]] || fail 'Invalid preparation wrote verification.'
+  assert_eq "$(keel_config_digest)" "$digest"
+  KEEL_LOCAL_IP=2001:db8::2 KEEL_LOCAL_PORT=22 KEEL_TS=yes
+  keel_reconnect_help confirm > "$scratch/reconnect"
+  grep -q 'admin@2001:db8::2' "$scratch/reconnect"
+  grep -q 'In the new login.*keel confirm' "$scratch/reconnect"
+  if grep -q -- '-p 22' "$scratch/reconnect"; then fail 'Unnecessary default port in reconnect command.'; fi
 }
 test_openssh_evidence() {
   KEEL_ADMIN="admin"

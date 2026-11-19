@@ -65,6 +65,14 @@ keel_ui_field() {
 }
 keel_ui_details() { LC_ALL=C tr '\000-\010\013\014\016-\037\177' '?' | sed 's/^/    /'; }
 keel_ui_next() { keel_ui_status NEXT "$*"; }
+keel_access_label() {
+  case "$1:$2" in
+    no:openssh) printf 'Public OpenSSH (public key)' ;;
+    yes:openssh) printf 'OpenSSH over Tailscale (public key)' ;;
+    yes:tailscale-ssh) printf 'Tailscale SSH (tailnet identity)' ;;
+    *) printf 'Unknown SSH authentication mode'; return 1 ;;
+  esac
+}
 keel_ui_summary() {
   keel_ui_section 'Summary'
   keel_ui_field Checks "${KEEL_UI_PASSED:-0} passed, ${KEEL_UI_WARNED:-0} warnings, ${KEEL_UI_UNKNOWN:-0} unknown, ${KEEL_UI_ERRORS:-0} errors"
