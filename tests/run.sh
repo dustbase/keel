@@ -8,5 +8,6 @@ for case_name in $(bash tests/regression.sh --list); do
   printf 'PASS: %s\n' "$case_name"
 done
 bash tests/installer.sh
+bash tests/installer-upgrade.sh
 bash tests/tailscale-policy.sh
 bash tests/tailscale-onboarding.sh
