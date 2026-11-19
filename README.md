@@ -34,8 +34,17 @@ Pending recovery blocks installation. Repeating the installer with an exact
 matching, trusted runtime is a no-op apart from repairing its command symlink.
 A different existing runtime or unrelated `keel` command is refused without
 replacement; upgrades still require a reviewed checkout. The preview's runtime
-pin is `f94dac7c1dc34b458e1929122dab0a3e2fbc1ee7`; updating it requires reviewing
+pin is `af69be6f725885391ce215213a9ebe4b334f522b`; updating it requires reviewing
 the new runtime and updating its archive checksum together.
+
+For an existing experimental installation, keep independent recovery access and
+resolve pending transactions with its original runtime before upgrading. Review
+the new pinned checkout, then run `sudo bash bin/keel init` from that checkout.
+This installs the reviewed runtime and reruns additive preparation; it is not an
+install-only upgrade. Keep the existing administrator/hostname at the prompts and
+reselect the intended Tailscale mode, tag and firewall profile. Then establish a
+fresh connection and verify again. The public bootstrap deliberately refuses
+different installed runtimes rather than perform this upgrade automatically.
 
 ## Getting started
 

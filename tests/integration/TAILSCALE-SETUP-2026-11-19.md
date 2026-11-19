@@ -22,6 +22,21 @@ The transcript reports successful verification after correcting the tailnet poli
 This is operator-provided evidence for the previous runtime, not a live acceptance
 test of this patch. No real VPS was accessed by the agent.
 
+The final installer pins runtime `af69be6f725885391ce215213a9ebe4b334f522b`
+with public archive SHA-256
+`b43d7886abd18e81c7272e3c133870bd15baacec5271c83120bff7fbd6e22616`.
+The anonymously downloaded archive's bin/lib files matched the committed runtime.
+The full fixture suite and ShellCheck passed again with the refreshed pin.
+The live installer harness then passed the real public download, checksum,
+installation and piped-repeat checks in the UTM guest. Its original runtime was
+restored exactly and before/after configuration, SSH/UFW, state and key hashes
+matched. Unsupported-release, different-runtime and missing-TTY refusals passed.
+As in the earlier installer test, only a guest-local OS guard exception allowed
+exploratory installation on 26.10; shipping guards and the public payload were
+unchanged. A temporary SSH-loopback SOCKS proxy preserved normal HTTPS validation;
+the proxy was stopped afterward. See the [initial installer report](INSTALLER-2026-11-17.md)
+for the harness design and transport limitations.
+
 Live switching with the new prompts, all supported LTS combinations, external
 IPv4/IPv6 isolation and the full acceptance matrix remain unverified. The installer
 and runtime remain experimental; fixture success is not security acceptance.
