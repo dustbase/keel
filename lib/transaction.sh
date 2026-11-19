@@ -156,11 +156,16 @@ keel_security_digest() {
 }
 keel_status() {
   if keel_transaction_load; then
-    printf 'Transaction: %s\nPhase: %s\nBackup: %s\n' "$KEEL_TX_ID" "$KEEL_TX_PHASE" "$KEEL_TX"
-    keel_systemctl list-timers --no-pager "$(keel_timer_unit).timer"
-    echo 'Recovery: sudo keel rollback (keep rescue-console access available).'
+    keel_ui_status WARN 'A security transaction is pending; recovery remains required until confirmed.'
+    keel_ui_field Transaction "$KEEL_TX_ID"
+    keel_ui_field Phase "$KEEL_TX_PHASE"
+    keel_ui_field Backup "$KEEL_TX"
+    if ! keel_systemctl list-timers --no-pager "$(keel_timer_unit).timer" | keel_ui_details; then
+      keel_ui_status UNKNOWN 'Cannot query the recovery timer. Keep rescue-console access.'
+    fi
+    keel_ui_next 'sudo keel rollback  (restore the pending transaction; keep rescue-console access)'
   elif [[ -f "$KEEL_STATE/pending-rollback" ]]; then
-    echo 'Legacy rollback pending; use the original runtime and docs/recovery.md.'
-  elif [[ -f "$KEEL_STATE/secured" ]]; then echo 'Last transaction confirmed; run sudo keel doctor for current checks.'
-  else echo 'No pending security transaction.'; fi
+    keel_ui_status WARN 'Legacy rollback pending; use the original runtime and docs/recovery.md.'
+  elif [[ -f "$KEEL_STATE/secured" ]]; then keel_ui_status INFO 'Last transaction confirmed; run sudo keel doctor for current checks.'
+  else keel_ui_status INFO 'No pending security transaction.'; fi
 }

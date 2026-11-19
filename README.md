@@ -165,6 +165,34 @@ sudo keel status    # Pending transaction, phase, backup, timer
 sudo keel rollback  # Explicitly restore a pending transaction
 ```
 
+Human output uses consistent sections, aligned details and explicit status labels.
+Doctor ends with counts of passed checks, warnings and unknowns; those counts do
+not establish overall security. Tailscale health warnings are shown beside a short
+node summary instead of the entire peer list. Colors appear only in capable
+terminals; redirected output is plain text. To disable terminal colors explicitly:
+
+```bash
+sudo env NO_COLOR=1 keel doctor
+```
+
+Policy templates remain copyable JSON. Internal authentication evidence, stored
+state and firewall fingerprints are not formatted or colored.
+
+Doctor also reports Docker's running-container bindings, network modes, reported
+firewall backend and Swarm state. On a manager it lists published service ports,
+including ingress publication. Non-loopback publications outside the selected
+application profile are flagged as potential conflicts; even matching ports are
+not proof of effective filtering. Host/shared namespaces, worker-only inventory,
+missing daemon fields and failed inspections remain explicitly unknown.
+
+Docker inspection is read-only and uses only the local `/var/run/docker.sock`;
+remote Docker contexts and rootless engines are outside this report. It avoids
+container environment/secrets and never edits Docker or firewall rules. It also
+runs when no Keel configuration exists, without a profile comparison. External
+IPv4/IPv6 probes and review of network drivers/direct routing are still required.
+See Docker's [firewall](https://docs.docker.com/engine/network/packet-filtering-firewalls/)
+and [Swarm publication](https://docs.docker.com/engine/swarm/ingress/) documentation.
+
 ## Firewall profiles and boundaries
 
 - **Private (default):** no public application ports.

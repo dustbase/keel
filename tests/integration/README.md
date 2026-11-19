@@ -6,6 +6,10 @@ checks ran in an explicitly authorized UTM Ubuntu 26.10 VM; see the
 [live failure tests and key-staging fix](UTM-failures-2026-11-16.md). No real VPS
 was accessed. The [installer preview checks](INSTALLER-2026-11-17.md) record
 real public download/install/repeat behavior and their OS/transport limitations.
+Subsequent records cover [Tailscale setup](TAILSCALE-SETUP-2026-11-19.md),
+[automatic updates](AUTO-UPDATE-2026-11-19.md),
+[Docker diagnostic fixtures](DOCKER-DOCTOR-2026-11-19.md), and
+[CLI presentation and installed-copy checks](CLI-OUTPUT-2026-11-19.md).
 Unit/fixture tests and 26.10 results do not satisfy the LTS acceptance matrix.
 
 Use disposable Ubuntu 24.04 and 26.04 images with independent serial/console

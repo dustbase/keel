@@ -22,23 +22,31 @@ source "$KEEL_HOME/lib/security.sh"
 source "$KEEL_HOME/lib/doctor.sh"
 usage() {
   cat <<'USAGE'
-Keel — bootstrap and secure Ubuntu servers (experimental v0.1)
 
-Usage:
-  keel init          Interactive preparation, preserve existing access
-  keel verify        Verify selected SSH authentication and sudo
-  keel secure        Apply hardening with timed automatic rollback
-  keel confirm       Confirm a post-change connection and cancel rollback
-  keel doctor        Read-only configuration report (sudo)
-  keel status        Read-only transaction status (sudo)
-  keel rollback      Restore a pending transaction (sudo)
-  keel tailscale-ssh Enable Tailscale SSH before verification (sudo)
-  keel tailscale-policy [--tag tag:NAME] [--port PORT]
-                     Print a policy template for the prepared mode (sudo)
-  keel help
+  Keel / Experimental v0.1
 
-Start from a reviewed checkout: sudo bash ./bin/keel init
-Run verify/secure/confirm WITHOUT sudo from the intended administrator login.
+  Usage
+    keel <command>
+
+  Setup
+    init              Interactive preparation; preserve existing access (sudo)
+    tailscale-ssh     Enable Tailscale SSH before verification (sudo)
+    tailscale-policy  Print a policy template (sudo)
+                        [--tag tag:NAME] [--port PORT]
+
+  Secure access
+    verify            Prove selected SSH authentication and sudo
+    secure            Review/apply hardening with timed recovery
+    confirm           Confirm a fresh post-change connection
+
+  Inspect and recover
+    doctor            Read-only configuration and Docker report (sudo)
+    status            Read-only transaction status (sudo)
+    rollback          Restore a pending transaction (sudo)
+    help              Show this help
+
+  Run verify/secure/confirm WITHOUT sudo from the administrator SSH login.
+  From a reviewed checkout: sudo bash ./bin/keel init
 USAGE
 }
 command="${1:-help}"
@@ -82,6 +90,7 @@ case "$command" in
     keel_doctor ;;
   status)
     keel_require_root
+    keel_ui_section 'Keel / Recovery'
     keel_status ;;
   rollback|__rollback|__recover-boot)
     keel_require_root

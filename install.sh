@@ -8,7 +8,8 @@ readonly KI_URL="https://codeload.github.com/dustbase/keel/tar.gz/$KI_REF"
 readonly KI_ROOT="keel-$KI_REF"
 KI_MODULES=(common doctor keys prepare security session ssh transaction)
 KI_WORK=''
-ki_die() { printf 'ERROR: %s\n' "$*" >&2; return 1; }
+ki_print() { printf '  %-9s %s\n' "[$1]" "$2"; }
+ki_die() { ki_print ERROR "$*" >&2; return 1; }
 ki_cleanup() {
   if [[ "$KI_WORK" == /tmp/keel-install.* && -d "$KI_WORK" && ! -L "$KI_WORK" ]]; then
     rm -rf -- "$KI_WORK"
@@ -114,7 +115,7 @@ ki_upgrade_runtime() {
   command -v python3 >/dev/null || { ki_die 'Automatic updates require python3 for atomic publication; nothing replaced.'; return 1; }
   ki_no_pending "$state" || return 1
   backup="$(mktemp -d "${target%/*}/.keel-upgrade.XXXXXXXXXX")" || return 1
-  printf 'Update recovery directory: %s\n' "$backup"
+  ki_print INFO "Update recovery directory: $backup"
   # Keep this directory on failure; it is not part of download cleanup.
   ki_install_runtime "$source" "$backup/runtime" "$backup/staged-command" || return 1
   ki_existing_matches "$source" "$backup/runtime" || return 1
@@ -140,7 +141,7 @@ ki_upgrade_runtime() {
   }
   ln -sfn "$target/bin/keel" "$command_link" || return 1
   keel_atomic_write "$backup/status" 'complete; runtime contains the previous installation' || return 1
-  printf 'Updated Keel. Previous runtime retained at %s/runtime\n' "$backup"
+  ki_print PASS "Updated Keel. Previous runtime retained at $backup/runtime"
 }
 ki_main() {
   local init=no existing=no arg command payload
@@ -172,7 +173,8 @@ ki_main() {
   trap ki_cleanup EXIT
   trap 'exit 130' INT
   trap 'exit 143' HUP TERM
-  printf 'Downloading experimental Keel runtime %s\n' "$KI_REF"
+  printf '\n  Keel / Install or update\n\n'
+  ki_print INFO "Downloading experimental Keel runtime $KI_REF"
   curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --location --silent --show-error \
     --connect-timeout 15 --max-time 120 "$KI_URL" -o "$KI_WORK/runtime.tar.gz" || return 1
   ki_verify_download "$KI_WORK/runtime.tar.gz" || return 1
@@ -198,14 +200,14 @@ ki_main() {
     ki_trusted_runtime /opt/keel || { ki_die 'Untrusted or unsupported installed runtime; nothing replaced.'; return 1; }
     if ki_existing_matches "$payload" /opt/keel; then
       ln -sfn /opt/keel/bin/keel /usr/local/bin/keel || return 1
-      printf 'The pinned runtime is already installed.\n'
+      ki_print INFO 'The pinned runtime is already installed.'
     else
       ki_upgrade_runtime "$payload" /opt/keel /usr/local/bin/keel /var/lib/keel || return 1
     fi
   else
     keel_trusted_path /opt || { ki_die 'Untrusted /opt.'; return 1; }
     ki_install_runtime "$payload" /opt/keel /usr/local/bin/keel || return 1
-    printf 'Installed Keel at /usr/local/bin/keel.\n'
+    ki_print PASS 'Installed Keel at /usr/local/bin/keel.'
   fi
   exec {KEEL_LOCK_FD}>&-
   ki_cleanup
@@ -214,10 +216,13 @@ ki_main() {
     exec /opt/keel/bin/keel init </dev/tty
   fi
   if [[ "$existing" == yes ]]; then
-    printf 'Settings and accounts preserved. Open a fresh SSH login and run keel verify before secure.\nUse sudo keel init only if you want to rerun preparation.\n'
+    ki_print INFO 'Settings and accounts preserved.'
+    ki_print NEXT 'Open a fresh SSH login and run keel verify before secure.'
+    ki_print INFO 'Use sudo keel init only if you want to rerun preparation.'
     return 0
   fi
-  printf 'Next: sudo keel init\nThen use fresh SSH connections for keel verify, keel secure, and keel confirm.\n'
+  ki_print NEXT 'sudo keel init'
+  ki_print INFO 'Then use fresh SSH connections for keel verify, keel secure, and keel confirm.'
 }
 # Supports both a downloaded script and curl | sudo bash, while allowing fixture imports.
 if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]}" == "$0" ]]; then

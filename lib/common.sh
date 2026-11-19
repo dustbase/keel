@@ -10,13 +10,72 @@ KEEL_FIELDS=(KEEL_CONFIG_VERSION KEEL_HOST KEEL_ADMIN KEEL_TS KEEL_TS_MODE KEEL_
 # Bound calls inside the recovery window; the independent timer shares our lock.
 keel_systemctl() { timeout --kill-after=5s 30s /usr/bin/systemctl "$@"; }
 keel_ufw() { timeout --kill-after=5s 30s /usr/sbin/ufw "$@"; }
-keel_log() { printf '\n==> %s\n' "$*"; }
-keel_warn() { printf 'WARNING: %s\n' "$*" >&2; }
-keel_die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+keel_ui_color() { [[ -t 1 && "${TERM:-dumb}" != dumb && "${NO_COLOR+x}" != x ]]; }
+# Human presentation only. Never use these helpers in evidence/state/digest data.
+keel_ui_emit() {
+  local prefix="$1" message="$2" width=0
+  if [[ -t 1 ]]; then
+    width=88
+    if [[ "${COLUMNS:-}" =~ ^[0-9]{1,3}$ ]]; then width="$((10#$COLUMNS))"; fi
+    (( width >= 40 )) || width=40
+    (( width <= 120 )) || width=120
+  fi
+  printf '%s\n' "$message" | LC_ALL=C tr '\000-\010\013\014\016-\037\177' '?' |
+    awk -v prefix="$prefix" -v width="$width" '
+      BEGIN { padding=sprintf("%*s", length(prefix), "") }
+      { if (width == 0) { print (NR == 1 ? prefix : padding) $0; next }
+        line=(NR == 1 ? prefix : padding)
+        for (i=1; i<=NF; i++) {
+          if (length(line) + length($i) + 1 > width && length(line) > length(padding)) {
+            print line; line=padding
+          }
+          line=line (length(line) > length(padding) ? " " : "") $i
+        }
+        print line
+      }'
+}
+keel_ui_status() {
+  local level="$1" code=36 prefix
+  shift
+  case "$level" in PASS) code=32 ;; WARN) code=33 ;; ERROR) code=31 ;; UNKNOWN) code=35 ;; INFO|NEXT) ;; *) return 1 ;; esac
+  if [[ "${KEEL_UI_COUNT:-no}" == yes ]]; then
+    case "$level" in
+      PASS) KEEL_UI_PASSED=$(( ${KEEL_UI_PASSED:-0} + 1 )) ;;
+      WARN) KEEL_UI_WARNED=$(( ${KEEL_UI_WARNED:-0} + 1 )) ;;
+      UNKNOWN) KEEL_UI_UNKNOWN=$(( ${KEEL_UI_UNKNOWN:-0} + 1 )) ;;
+      ERROR) KEEL_UI_ERRORS=$(( ${KEEL_UI_ERRORS:-0} + 1 )) ;;
+    esac
+  fi
+  printf -v prefix '  %-9s ' "[$level]"
+  if keel_ui_color; then printf '\033[%sm' "$code"; fi
+  keel_ui_emit "$prefix" "$*"
+  if keel_ui_color; then printf '\033[0m'; fi
+}
+keel_ui_section() {
+  printf '\n'
+  if keel_ui_color; then printf '\033[1m'; fi
+  keel_ui_emit '  ' "$*"
+  if keel_ui_color; then printf '\033[0m'; fi
+}
+keel_ui_field() {
+  local text
+  printf -v text '%-22s %s' "$1" "$2"
+  # Keep alignment, including in narrow terminals; do not wrap commands/paths.
+  printf '%s\n' "$text" | LC_ALL=C tr '\000-\010\013\014\016-\037\177' '?' | sed 's/^/    /'
+}
+keel_ui_details() { LC_ALL=C tr '\000-\010\013\014\016-\037\177' '?' | sed 's/^/    /'; }
+keel_ui_next() { keel_ui_status NEXT "$*"; }
+keel_ui_summary() {
+  keel_ui_section 'Summary'
+  keel_ui_field Checks "${KEEL_UI_PASSED:-0} passed, ${KEEL_UI_WARNED:-0} warnings, ${KEEL_UI_UNKNOWN:-0} unknown, ${KEEL_UI_ERRORS:-0} errors"
+}
+keel_log() { keel_ui_section "$*"; }
+keel_warn() { keel_ui_status WARN "$*" >&2; }
+keel_die() { keel_ui_status ERROR "$*" >&2; exit 1; }
 keel_require_root() { (( EUID == 0 )) || keel_die 'Run this command as root.'; }
 keel_yes() {
   local reply
-  read -r -p "$1 [y/N]: " reply || return 1
+  read -r -p "  ? $1 [y/N]: " reply || return 1
   [[ "$reply" =~ ^[Yy]([Ee][Ss])?$ ]]
 }
 keel_require_ubuntu() {

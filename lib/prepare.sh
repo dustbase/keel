@@ -79,10 +79,14 @@ keel_init() {
   esac
 
   echo
-  echo "Plan: hostname=$KEEL_HOST; admin=$KEEL_ADMIN; tailscale=$KEEL_TS"
-  echo "Firewall profile=$KEEL_PROFILE; SSH mode=$KEEL_TS_MODE"
-  echo "No public application ports by default; current SSH access retained during prepare."
-  echo 'Valid keys on the original account will receive access to the destination administrator (sudo).'
+  keel_ui_section 'Preparation plan'
+  keel_ui_field Hostname "$KEEL_HOST"
+  keel_ui_field Administrator "$KEEL_ADMIN"
+  keel_ui_field Tailscale "$KEEL_TS"
+  keel_ui_field 'SSH authentication' "$KEEL_TS_MODE"
+  keel_ui_field 'Application profile' "$KEEL_PROFILE"
+  keel_ui_status INFO 'Current SSH access is retained during preparation. Restrictive changes happen only after verification.'
+  keel_ui_status WARN 'Valid original-account keys will receive access to the destination administrator, which has sudo.'
   if command -v docker >/dev/null 2>&1; then
     keel_warn 'Docker-published ports can bypass UFW; Keel does not manage Docker networking.'
   fi
@@ -158,7 +162,8 @@ REBOOT
 
 keel_preparation_next_steps() {
   local -a policy_args=()
-  echo "Keep your original SSH session open."
+  keel_ui_section 'Next steps'
+  keel_ui_status WARN 'Keep your original SSH session open.'
   if [[ "$KEEL_TS" == yes ]]; then
     keel_tailscale_policy "${policy_args[@]}" || return 1
   fi
@@ -224,6 +229,7 @@ keel_tailscale_policy() {
     }
     port=22
   fi
+  keel_ui_section 'Tailscale policy template' >&2
   cat >&2 <<'GUIDANCE'
 Tailscale policy TEMPLATE: replace every REPLACE_WITH value and placeholder tag.
 Merge entries into your existing groups/tagOwners/grants/ssh sections; do not
