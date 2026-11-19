@@ -7,6 +7,8 @@ cd "$(dirname "$0")/.."
 source lib/common.sh
 # shellcheck source=lib/session.sh
 source lib/session.sh
+# shellcheck source=lib/prepare.sh
+source lib/prepare.sh
 # shellcheck source=lib/doctor.sh
 source lib/doctor.sh
 scratch="$(mktemp -d /tmp/keel-cli-test.XXXXXXXXXX)"
@@ -67,7 +69,7 @@ tailscale() {
   printf '{"RunSSH":false}\n'
 }
 timeout() {
-  [[ "$*" == *'tailscale status --json' ]] || fail 'Unexpected timed command.'
+  [[ "$*" == *'tailscale --socket=/var/run/tailscale/tailscaled.sock status --json' ]] || fail 'Unexpected timed command.'
   cat "$scratch/tailscale"
 }
 keel_docker_doctor() { keel_ui_section Docker; keel_ui_status INFO 'Docker fixture; no engine contacted.'; }

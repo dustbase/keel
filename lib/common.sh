@@ -64,6 +64,11 @@ keel_ui_field() {
   printf '%s\n' "$text" | LC_ALL=C tr '\000-\010\013\014\016-\037\177' '?' | sed 's/^/    /'
 }
 keel_ui_details() { LC_ALL=C tr '\000-\010\013\014\016-\037\177' '?' | sed 's/^/    /'; }
+keel_ui_command() {
+  printf '\n'
+  keel_ui_emit '  ' "$1"
+  printf '%s\n' "$2" | keel_ui_details
+}
 keel_ui_next() { keel_ui_status NEXT "$*"; }
 keel_access_label() {
   case "$1:$2" in

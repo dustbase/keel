@@ -203,6 +203,29 @@ keel_session_evidence() {
   done
   return 1
 }
+keel_tailscale_status_json() {
+  timeout --kill-after=1s 3s tailscale --socket=/var/run/tailscale/tailscaled.sock status --json
+}
+# Advisory display only. A name never replaces connection/authentication proof.
+# With an IP argument, require metadata for this same proven destination address.
+keel_magicdns_names() {
+  jq -er --arg ip "${2:-}" '
+    def dns:
+      type == "string" and length <= 253 and
+      (split(".") | length >= 2 and all(.[];
+        length >= 1 and length <= 63 and test("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")));
+    select(.CurrentTailnet.MagicDNSEnabled == true) |
+    (.CurrentTailnet.MagicDNSSuffix | ascii_downcase | sub("\\.$"; "")) as $suffix |
+    (.Self.DNSName | ascii_downcase | sub("\\.$"; "")) as $name |
+    select(($suffix | dns) and ($name | dns)) |
+    .Self.TailscaleIPs as $ips |
+    select($ips | type == "array" and length > 0 and all(.[]; type == "string")) |
+    select($ip == "" or ($ips | index($ip)) != null) |
+    ($name | split(".")[0]) as $short |
+    select($name == ($short + "." + $suffix)) |
+    "\($short) \($name)"
+  ' <<< "$1" 2>/dev/null
+}
 keel_tailscale_ssh_state() {
   local prefs state
   prefs="$(tailscale debug prefs)" || { printf 'unknown\n'; return 0; }

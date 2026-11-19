@@ -7,6 +7,7 @@ cd "$(dirname "$0")/.."
 source lib/common.sh
 # shellcheck source=lib/prepare.sh
 source lib/prepare.sh
+keel_tailscale_status_json() { return 1; }
 scratch="$(mktemp -d)"
 trap 'rm -rf -- "$scratch"' EXIT
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }

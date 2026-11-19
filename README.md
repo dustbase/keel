@@ -247,3 +247,8 @@ shellcheck -x install.sh bin/keel lib/*.sh tests/*.sh
 The regression suite uses temporary files and mocked host commands, never host
 firewall or account changes. See [v0.1 specification](docs/SPEC.md),
 [architecture](docs/architecture.md), and [VM acceptance checklist](tests/integration/README.md).
+
+For Tailscale modes, preparation and `sudo keel doctor` report MagicDNS settings
+and advertised node names. Reconnect instructions prefer the matching short name
+with a Tailscale IP fallback. Client DNS resolution remains a separate check; use
+the displayed full DNS name if your client lacks the tailnet search domain.

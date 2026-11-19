@@ -144,3 +144,10 @@ SSH/UFW fingerprint. A client's forwarded locale must not change shell-glob
 ordering or the serialized policy. Historical draft fingerprints that no longer
 match remain refused; never silently adopt unfamiliar rules. Test upgrades from
 a recorded recoverable baseline and repeat guarded verification/confirmation.
+
+MagicDNS reconnect names are advisory. Keel reads the local daemon with a bounded
+query and uses a short node name only when enabled tailnet metadata matches the
+proven connection destination. It also prints the full DNS name and an IP fallback.
+Clients without a tailnet DNS search domain may need the full name; client DNS
+resolution is not established by this server-side check. No name replaces
+authentication or connection-freshness evidence.

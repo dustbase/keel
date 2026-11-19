@@ -13,3 +13,4 @@ bash tests/tailscale-policy.sh
 bash tests/tailscale-onboarding.sh
 bash tests/docker-doctor.sh
 bash tests/cli-output.sh
+bash tests/magicdns.sh
