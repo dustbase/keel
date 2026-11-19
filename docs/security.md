@@ -108,6 +108,25 @@ that helper's environment is not accepted as authentication proof. Unsupported
 session/logind/log formats still fail closed. See the
 [VM test record](../tests/integration/UTM-2026-11-16.md) for results and limits.
 
+## Tailscale SSH setup
+
+Selecting Tailscale SSH during preparation does not enable its server. Keel prints
+an incomplete-setup checklist and a policy template. The selected tag is saved
+as root-private advisory data, not authentication evidence. Legacy installations
+without that saved tag use a placeholder; supply `tailscale-policy --tag tag:NAME`
+to generate an explicit template. Both network and SSH rules must cover the actual
+server tag, with the intended local administrator in `users`. For a tagged server,
+a default `autogroup:self` SSH rule alone is insufficient.
+
+Before `sudo keel tailscale-ssh` switches servers, the operator must acknowledge
+policy setup and tested independent recovery access. Keel cannot validate a future
+login by inspecting local preferences. It invalidates verification and records a
+new preparation boundary before enabling, so a disconnect or failed command cannot
+leave old evidence usable. A failed enable may still have changed daemon state;
+inspect it using recovery access. An already-enabled request changes nothing.
+Policy denials happen before Keel runs: fix the tailnet policy, then establish a
+fresh interactive login. Public-IP OpenSSH logins cannot verify Tailscale SSH mode.
+
 ## Stable firewall fingerprints
 
 Keel fixes locale, output width and terminal presentation while computing the

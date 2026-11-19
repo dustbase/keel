@@ -148,19 +148,116 @@ REBOOT
   fi
 
   keel_save_config
+  keel_atomic_write "$KEEL_STATE/tailscale-tag" "$ts_tag" || return 1
   keel_atomic_write "$KEEL_STATE/prepared" "$(keel_record_boundary)"
   keel_atomic_write "$KEEL_STATE/preparation-status" complete
   rm -f "$KEEL_STATE/verified" "$KEEL_STATE/secured"
   keel_log "Preparation complete"
+  keel_preparation_next_steps
+}
+
+keel_preparation_next_steps() {
+  local -a policy_args=()
   echo "Keep your original SSH session open."
-  if [[ "$KEEL_TS_MODE" == tailscale-ssh ]]; then
-    echo 'Before verification, configure tailnet SSH policy and run: sudo keel tailscale-ssh'
-    echo 'This must happen before verifying the Tailscale SSH authentication mode.'
+  if [[ "$KEEL_TS" == yes ]]; then
+    keel_tailscale_policy "${policy_args[@]}" || return 1
   fi
-  echo "From a NEW terminal, connect as $KEEL_ADMIN using the server IP or MagicDNS."
+  if [[ "$KEEL_TS_MODE" == tailscale-ssh ]]; then
+    echo 'Tailscale SSH setup is incomplete until an authorized fresh login is verified.'
+    echo '1. Merge the template into your tailnet policy: both TCP 22 network access and an SSH rule are required.'
+    echo "   The SSH rule must include the destination server tag and local user $KEEL_ADMIN."
+    echo '2. Keep tested public SSH or provider-console recovery access.'
+    echo '3. Run: sudo keel tailscale-ssh (this may disconnect the current session).'
+    echo "4. From a NEW terminal: ssh -o ControlMaster=no -o ControlPath=none $KEEL_ADMIN@$KEEL_HOST"
+    echo '   Use the Tailscale address or MagicDNS name, not the public IP.'
+    echo '   If Tailscale denies SSH, fix the tailnet SSH rule; reconnecting alone will not help.'
+    echo '5. At the new remote prompt, run without sudo: keel verify'
+    echo 'Only after verification: keel secure. Do not reboot or bypass verification to resolve a policy denial.'
+    return 0
+  fi
+  if [[ "$KEEL_TS" == yes ]]; then
+    echo "From a NEW terminal, connect as $KEEL_ADMIN using the Tailscale address or MagicDNS name."
+    echo 'Use OpenSSH public-key authentication; Tailscale SSH identity authentication was not selected.'
+  else
+    echo "From a NEW terminal, connect as $KEEL_ADMIN using the public server address and actual OpenSSH port."
+  fi
   echo 'Disable SSH multiplexing for verification: ssh -o ControlMaster=no -o ControlPath=none USER@HOST'
   echo "Then run (without sudo): keel verify"
   echo "Only after verification: keel secure"
+}
+
+# Output only: no policy API calls, state changes, or assumptions about identity.
+keel_tailscale_policy() {
+  local tag=tag:replace-with-server-tag port=REPLACE_WITH_OPENSSH_PORT arg
+  keel_validate_config || { printf 'ERROR: Invalid prepared configuration.\n' >&2; return 1; }
+  # Saved intent is advisory only; it never authorizes authentication or policy.
+  if [[ -e "$KEEL_STATE/tailscale-tag" || -L "$KEEL_STATE/tailscale-tag" ]]; then
+    keel_trusted_path "$KEEL_STATE/tailscale-tag" || { printf 'ERROR: Unsafe saved Tailscale tag.\n' >&2; return 1; }
+    arg="$(cat "$KEEL_STATE/tailscale-tag")" || return 1
+    [[ -z "$arg" || "$arg" =~ ^tag:[a-z0-9][a-z0-9-]*$ ]] || { printf 'ERROR: Invalid saved Tailscale tag.\n' >&2; return 1; }
+    [[ -z "$arg" ]] || tag="$arg"
+  fi
+  while (( $# )); do
+    arg="$1"
+    case "$arg" in
+      --tag)
+        if ! { (( $# >= 2 )) && [[ "$2" =~ ^tag:[a-z0-9][a-z0-9-]*$ ]]; }; then
+          printf 'ERROR: --tag requires tag:NAME.\n' >&2; return 1
+        fi
+        tag="$2"; shift 2 ;;
+      --port)
+        if ! { (( $# >= 2 )) && [[ "$2" =~ ^[0-9]{1,5}$ ]] &&
+          (( 10#$2 >= 1 && 10#$2 <= 65535 )); }; then
+          printf 'ERROR: --port requires a TCP port from 1 to 65535.\n' >&2; return 1
+        fi
+        port="$((10#$2))"; shift 2 ;;
+      *) printf 'ERROR: Unknown policy option: %s\n' "$arg" >&2; return 1 ;;
+    esac
+  done
+  [[ "$KEEL_TS" == yes ]] || {
+    printf 'Public OpenSSH selected; no Tailscale policy template is needed.\n' >&2
+    return 0
+  }
+  if [[ "$KEEL_TS_MODE" == tailscale-ssh ]]; then
+    [[ "$port" == REPLACE_WITH_OPENSSH_PORT || "$port" == 22 ]] || {
+      printf 'ERROR: Tailscale SSH uses port 22; --port applies to OpenSSH only.\n' >&2; return 1;
+    }
+    port=22
+  fi
+  cat >&2 <<'GUIDANCE'
+Tailscale policy TEMPLATE: replace every REPLACE_WITH value and placeholder tag.
+Merge entries into your existing groups/tagOwners/grants/ssh sections; do not
+replace the entire policy or duplicate top-level sections. Review existing broad
+rules: adding these entries does not restrict access granted elsewhere.
+Tag ownership permits assigning this access to devices. Choose tag owners
+separately from SSH users, and apply the destination tag only to intended servers.
+Tagging changes device identity; review existing policy before assigning tags.
+For OpenSSH, replace the port with the actual listener port (or pass --port).
+OpenSSH still requires authorized public keys; an SSH policy rule does not grant
+OpenSSH login. Tailscale SSH uses a separate server and a check-mode SSH rule.
+Validate the merged policy in Tailscale's editor, then test a fresh connection.
+Keep existing recovery access. Keel has not applied or verified this template.
+GUIDANCE
+  cat <<POLICY
+{
+  "groups": {
+    "group:keel-ssh-users": ["REPLACE_WITH_ALLOWED_TAILNET_USER"]
+  },
+  "tagOwners": {
+    "$tag": ["REPLACE_WITH_TRUSTED_TAG_OWNER"]
+  },
+  "grants": [
+    {"src": ["group:keel-ssh-users"], "dst": ["$tag"], "ip": ["tcp:$port"]}
+  ]
+POLICY
+  if [[ "$KEEL_TS_MODE" == tailscale-ssh ]]; then
+    cat <<POLICY
+  ,"ssh": [
+    {"action": "check", "src": ["group:keel-ssh-users"], "dst": ["$tag"], "users": ["$KEEL_ADMIN"]}
+  ]
+POLICY
+  fi
+  printf '}\n'
 }
 
 keel_updates_check() {

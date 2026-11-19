@@ -161,7 +161,18 @@ keel_enable_tailscale_ssh() {
   keel_no_pending
   keel_load_config
   [[ "$KEEL_TS" == yes && "$KEEL_TS_MODE" == tailscale-ssh ]] || keel_die 'Tailscale SSH is not selected.'
-  if [[ -f "$KEEL_STATE/managed-firewall" ]] && ! tailscale debug prefs | jq -e '.RunSSH == true' >/dev/null; then
+  local state
+  state="$(keel_tailscale_ssh_state)" || return 1
+  case "$state" in
+    enabled)
+      echo 'Tailscale SSH is already enabled; no server settings changed.'
+      echo "Open a fresh interactive Tailscale login as $KEEL_ADMIN@$KEEL_HOST, then run keel verify."
+      echo 'A policy denial requires an SSH rule for the destination tag and local user, not another enable attempt.'
+      return 0 ;;
+    disabled) ;;
+    *) keel_die 'Cannot inspect Tailscale SSH state; refusing to switch servers. Check tailscaled and sudo tailscale debug prefs.' ;;
+  esac
+  if [[ -f "$KEEL_STATE/managed-firewall" ]]; then
     # Reconfiguration must not switch the only known working SSH server out
     # from under an already-hardened host. A verified public key path survives.
     KEEL_TS_MODE=openssh
@@ -170,11 +181,27 @@ keel_enable_tailscale_ssh() {
     fi
     KEEL_TS_MODE=tailscale-ssh
   fi
-  echo 'Configure the tailnet network and SSH policies for this administrator first.'
+  local -a policy_args=()
+  keel_tailscale_policy "${policy_args[@]}" || return 1
+  echo "The tailnet must allow BOTH TCP 22 network access and Tailscale SSH as local user $KEEL_ADMIN."
+  echo 'A grant for a different server tag, or only autogroup:self, does not cover this tagged server.'
+  echo 'Keel cannot prove your external policy permits the future login.'
+  keel_yes 'Have you merged and validated the network AND SSH rules for the destination tag and this user?' || return 0
+  keel_yes 'Have you tested independent public SSH or provider-console recovery access?' || return 0
   echo 'Enabling Tailscale SSH can interrupt existing tailnet SSH sessions.'
   keel_yes 'Enable Tailscale SSH? Keep public SSH/recovery-console access.' || return 0
-  tailscale set --ssh
-  rm -f "$KEEL_STATE/verified" "$KEEL_STATE/secured"
-  keel_atomic_write "$KEEL_STATE/prepared" "$(keel_record_boundary)"
+  # Persist invalidation before the server switch can disconnect this process.
+  rm -f "$KEEL_STATE/verified" "$KEEL_STATE/secured" || return 1
+  local boundary
+  boundary="$(keel_record_boundary)" || return 1
+  keel_atomic_write "$KEEL_STATE/prepared" "$boundary" || return 1
+  tailscale set --ssh || {
+    keel_warn 'Tailscale SSH enable did not complete normally; its state may have changed. Keep recovery access and inspect the server state before retrying. Verification was invalidated.'
+    return 1
+  }
+  [[ "$(keel_tailscale_ssh_state)" == enabled ]] || {
+    keel_warn 'Tailscale SSH enable could not be verified; keep recovery access. No login has been verified.'
+    return 1
+  }
   echo 'Establish a new Tailscale SSH connection, then run keel verify.'
 }
