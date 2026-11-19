@@ -12,6 +12,9 @@ source lib/doctor.sh
 scratch="$(mktemp -d /tmp/keel-cli-test.XXXXXXXXXX)"
 trap 'rm -rf -- "$scratch"' EXIT
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+[[ "$(keel_access_label no openssh)" == 'Public OpenSSH (public key)' ]] || fail 'Public mode label is ambiguous.'
+[[ "$(keel_access_label yes openssh)" == 'OpenSSH over Tailscale (public key)' ]] || fail 'Tailnet OpenSSH mode label is ambiguous.'
+[[ "$(keel_access_label yes tailscale-ssh)" == 'Tailscale SSH (tailnet identity)' ]] || fail 'Tailscale SSH label is ambiguous.'
 TERM=xterm keel_ui_status PASS 'plain redirected output' > "$scratch/plain"
 if grep -q $'\033' "$scratch/plain"; then fail 'Redirected output contains ANSI.'; fi
 grep -q '\[PASS' "$scratch/plain"
@@ -50,7 +53,7 @@ touch "$KEEL_CONFIG"
 printf baseline > "$KEEL_STATE/managed-firewall"
 keel_require_ubuntu() { :; }
 hostname() { printf fixture-host; }
-keel_load_config() { KEEL_ADMIN=admin KEEL_PROFILE=private KEEL_TS_MODE=openssh KEEL_CUSTOM=''; }
+keel_load_config() { KEEL_ADMIN=admin KEEL_PROFILE=private KEEL_TS=no KEEL_TS_MODE=openssh KEEL_CUSTOM=''; }
 keel_ssh_check() { return 0; }
 ufw() { fail 'Unexpected raw UFW invocation.'; }
 keel_ufw() { printf 'Status: active\n22/tcp ALLOW IN Anywhere\n'; }

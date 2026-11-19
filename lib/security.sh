@@ -2,12 +2,50 @@
 keel_verify() {
   keel_no_pending
   keel_verify_identity
-  if [[ ! -f "$KEEL_STATE/prepared" ]] || ! keel_after_boundary "$KEEL_STATE/prepared"; then
-    keel_die 'Preparation or intent changed. Re-run init, then establish a new SSH connection.'
-  fi
+  keel_verify_preparation
   keel_atomic_write "$KEEL_STATE/verified" "$(keel_boot_id) $(keel_ticks) $(keel_config_digest) $KEEL_CONNECTION_ID $KEEL_LOCAL_PORT"
   keel_log 'Verified selected SSH authentication and successful sudo execution.'
   keel_ui_next 'Run keel secure from this verified connection to review the hardening plan.'
+}
+keel_verify_preparation() {
+  local boot ticks digest extra
+  [[ -f "$KEEL_STATE/prepared" ]] || keel_die 'No completed preparation is recorded. Run sudo keel init, then open a new SSH connection.'
+  # Keep the existing gate authoritative; the branches below only explain refusal.
+  if keel_after_boundary "$KEEL_STATE/prepared"; then return 0; fi
+  read -r boot ticks digest extra < "$KEEL_STATE/prepared" ||
+    keel_die 'Preparation evidence is unreadable or incomplete. Inspect Keel state using recovery access before rerunning preparation.'
+  [[ -z "$extra" && "$ticks" =~ ^[0-9]+$ ]] ||
+    keel_die 'Preparation evidence is malformed. Inspect Keel state using recovery access before rerunning preparation.'
+  [[ "$boot" == "$(keel_boot_id)" ]] ||
+    keel_die 'Preparation evidence belongs to a different boot. Run sudo keel init to establish current preparation evidence, then open a new SSH connection.'
+  [[ "$digest" == "$(keel_config_digest)" ]] ||
+    keel_die 'Prepared settings differ from current intent. Review them and rerun sudo keel init, then open a new SSH connection.'
+  if [[ "$KEEL_CONNECTION_START" =~ ^[0-9]+$ ]] && (( KEEL_CONNECTION_START <= ticks )); then
+    keel_ui_status WARN 'This SSH connection predates preparation or a Keel runtime update. Do not rerun init solely for this message.' >&2
+    keel_reconnect_help verify >&2 || keel_die 'Open a new SSH connection with multiplexing disabled, then run keel verify there.'
+    keel_die 'Run verification from that new connection; this session remains available for recovery.'
+  fi
+  keel_die 'Preparation freshness could not be established. Inspect the recorded boundary using recovery access; verification remains blocked.'
+}
+keel_reconnect_help() {
+  # Presentation only, called after identity verification has established context.
+  local action="$1" target="${KEEL_LOCAL_IP:-}" port="${KEEL_LOCAL_PORT:-22}" reconnect
+  local -a args=(ssh -o ControlMaster=no -o ControlPath=none)
+  [[ "$action" == verify || "$action" == confirm ]] || return 1
+  keel_valid_user "$KEEL_ADMIN" || return 1
+  if [[ ! "$target" =~ ^[0-9a-fA-F:.]+$ ]]; then
+    keel_valid_hostname "$KEEL_HOST" || return 1
+    target="$KEEL_HOST"
+  fi
+  [[ "$port" =~ ^[0-9]{1,5}$ ]] && (( 10#$port >= 1 && 10#$port <= 65535 )) || return 1
+  [[ "$port" == 22 ]] || args+=(-p "$port")
+  printf -v reconnect '%q ' "${args[@]}" "$KEEL_ADMIN@$target"
+  keel_ui_next 'Keep this session open for recovery. Open a NEW terminal on your computer.'
+  keel_ui_field 'On your computer' "${reconnect% }"
+  keel_ui_field 'In the new login' "keel $action"
+  if [[ "$KEEL_TS" == no ]]; then
+    keel_ui_status INFO 'If you use NAT, a proxy or port forwarding, substitute the original address and port you connected through.'
+  fi
 }
 keel_firewall_preflight() {
   local added manager
@@ -105,6 +143,9 @@ keel_secure() {
   fi
   keel_firewall_preflight || keel_die 'UFW preflight failed; review existing rules and IPv6 configuration.'
   keel_ui_section 'Security plan'
+  keel_ui_field Server "$KEEL_HOST"
+  keel_ui_field Administrator "$KEEL_ADMIN"
+  keel_ui_field 'SSH authentication' "$(keel_access_label "$KEEL_TS" "$KEEL_TS_MODE")"
   keel_ui_field 'Public management' "$([[ "$KEEL_TS" == yes ]] && echo closed || echo key-only)"
   keel_ui_field 'Verified SSH port' "$KEEL_LOCAL_PORT"
   keel_ui_field 'Application profile' "$KEEL_PROFILE"
@@ -135,7 +176,7 @@ keel_secure() {
   keel_atomic_write "$KEEL_TX/applied-digest" "$(keel_security_digest)"
   keel_transaction_phase awaiting_confirmation
   keel_log 'Changes applied; recovery remains armed.'
-  keel_ui_next 'Establish a NEW connection with SSH multiplexing disabled, then run keel confirm. Recovery remains armed.'
+  keel_reconnect_help confirm || keel_ui_next 'Establish a NEW connection with SSH multiplexing disabled, then run keel confirm. Recovery remains armed.'
 }
 keel_confirm() {
   keel_verify_identity

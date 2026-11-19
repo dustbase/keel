@@ -104,6 +104,9 @@ Machine-readable evidence, policy JSON, state and security fingerprints must not
 pass through presentation helpers. Human warnings/errors remain on stderr.
 Doctor summarizes checks and shows compact Tailscale state/health warnings rather
 than dumping the tailnet peer list. Unknown checks never count as passes.
+Preparation, doctor and the pre-apply security plan explicitly distinguish public
+OpenSSH, OpenSSH over Tailscale and Tailscale SSH, including the authentication
+method. SSH access mode is separate from the application-port profile.
 
 Doctor reports observed facts, intended state and unknown checks separately. It
 must not claim global security or external reachability from local checks. Reuse

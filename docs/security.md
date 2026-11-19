@@ -50,6 +50,16 @@ pre-existing connections, and multiplexed channels cannot satisfy those checks.
 Tailscale network/SSH policy is external and can change later; one successful
 connection does not prove its future availability or global least privilege.
 
+A runtime update advances the preparation freshness boundary while preserving
+configuration. A connection that was already open at that boundary cannot verify:
+keep it for recovery, open a new non-multiplexed interactive SSH connection, and
+run `keel verify` there. This case does not require rerunning preparation. Missing,
+malformed, prior-boot or changed-intent evidence remains refused separately.
+Refusals for an old session print a copyable reconnect command and say which
+terminal runs each step. The address/port come from the proven connection when
+available; public NAT/proxy mappings may require the operator's original target.
+This guidance is presentation only and never substitutes for server-side proof.
+
 ## SSH configuration
 
 Keel writes one early drop-in and checks syntax plus global and administrator/root

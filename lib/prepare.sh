@@ -83,7 +83,7 @@ keel_init() {
   keel_ui_field Hostname "$KEEL_HOST"
   keel_ui_field Administrator "$KEEL_ADMIN"
   keel_ui_field Tailscale "$KEEL_TS"
-  keel_ui_field 'SSH authentication' "$KEEL_TS_MODE"
+  keel_ui_field 'SSH authentication' "$(keel_access_label "$KEEL_TS" "$KEEL_TS_MODE")"
   keel_ui_field 'Application profile' "$KEEL_PROFILE"
   keel_ui_status INFO 'Current SSH access is retained during preparation. Restrictive changes happen only after verification.'
   keel_ui_status WARN 'Valid original-account keys will receive access to the destination administrator, which has sudo.'
