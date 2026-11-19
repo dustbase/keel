@@ -10,6 +10,8 @@ Subsequent records cover [Tailscale setup](TAILSCALE-SETUP-2026-11-19.md),
 [automatic updates](AUTO-UPDATE-2026-11-19.md),
 [Docker diagnostic fixtures](DOCKER-DOCTOR-2026-11-19.md), and
 [CLI presentation and installed-copy checks](CLI-OUTPUT-2026-11-19.md).
+The [access-guidance checks](ACCESS-GUIDANCE-2026-11-19.md) cover explicit SSH mode
+labels and reconnect instructions without weakening freshness gates.
 Unit/fixture tests and 26.10 results do not satisfy the LTS acceptance matrix.
 
 Use disposable Ubuntu 24.04 and 26.04 images with independent serial/console
