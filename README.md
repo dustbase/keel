@@ -34,8 +34,17 @@ Pending recovery blocks installation. Repeating the installer with an exact
 matching, trusted runtime is a no-op apart from repairing its command symlink.
 A different existing runtime or unrelated `keel` command is refused without
 replacement; upgrades still require a reviewed checkout. The preview's runtime
-pin is `f94dac7c1dc34b458e1929122dab0a3e2fbc1ee7`; updating it requires reviewing
+pin is `af69be6f725885391ce215213a9ebe4b334f522b`; updating it requires reviewing
 the new runtime and updating its archive checksum together.
+
+For an existing experimental installation, keep independent recovery access and
+resolve pending transactions with its original runtime before upgrading. Review
+the new pinned checkout, then run `sudo bash bin/keel init` from that checkout.
+This installs the reviewed runtime and reruns additive preparation; it is not an
+install-only upgrade. Keep the existing administrator/hostname at the prompts and
+reselect the intended Tailscale mode, tag and firewall profile. Then establish a
+fresh connection and verify again. The public bootstrap deliberately refuses
+different installed runtimes rather than perform this upgrade automatically.
 
 ## Getting started
 
@@ -69,8 +78,38 @@ Choose one of three access modes:
 
 Enable Tailscale SSH **before** verification. Enabling it can interrupt existing
 Tailscale connections; keep public recovery access or a rescue console available.
+Selecting this mode in `init` does not enable the server. Follow the printed
+incomplete-setup checklist: configure both network and SSH access for the actual
+server tag and administrator, test independent recovery access, then run
+`sudo keel tailscale-ssh`. Reconnect through MagicDNS or the Tailscale address
+before verification. A public-IP login uses OpenSSH and cannot verify this mode.
 Keel does not edit your tailnet policy. Tailscale SSH is a separate SSH server:
 OpenSSH settings do not govern its authorization.
+
+Preparation prints a Tailscale policy template for the selected mode. To print it
+again from a prepared checkout/installation:
+
+```bash
+sudo keel tailscale-policy --tag tag:my-server --port 2222 > tailscale-policy.json
+```
+
+For OpenSSH over Tailscale, pass the actual OpenSSH listener port; otherwise the
+output leaves an explicit port placeholder. For Tailscale SSH, omit `--port`
+(its separate server uses port 22). The template grants network access to a
+placeholder group; Tailscale SSH additionally includes a check-mode SSH rule for
+the selected local administrator only. Public OpenSSH emits no tailnet policy.
+New preparation saves the selected tag for later template generation; `--tag`
+overrides it. Legacy installations without saved tag intent retain a placeholder.
+
+Replace all identity/tag/port placeholders and merge entries into existing policy
+sections in the Tailscale editor. Choose tag owners separately from SSH users and
+apply the destination tag only to intended servers; tagging changes device
+identity. Review existing broad rules and group names: adding this snippet cannot
+restrict access already allowed elsewhere. This is an example, not a replacement
+policy or evidence of access. Keel never uploads it or changes tailnet permissions.
+See Tailscale's [grants](https://tailscale.com/docs/reference/syntax/grants) and
+[SSH policy reference](https://tailscale.com/docs/reference/syntax/policy-file#tailscale-ssh).
+
 For Tailscale SSH, open an interactive login without a remote command, for example
 `tailscale ssh USER@HOST -o ControlMaster=no -o ControlPath=none`, then type the
 Keel commands at its prompt. Current Ubuntu login layouts require trusted logind

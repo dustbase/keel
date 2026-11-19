@@ -203,9 +203,32 @@ keel_session_evidence() {
   done
   return 1
 }
+keel_tailscale_ssh_state() {
+  local prefs state
+  prefs="$(tailscale debug prefs)" || { printf 'unknown\n'; return 0; }
+  state="$(jq -er 'if .RunSSH == true then "enabled" elif .RunSSH == false then "disabled" else error("Unknown RunSSH state") end' <<< "$prefs")" || {
+    printf 'unknown\n'; return 0;
+  }
+  printf '%s\n' "$state"
+}
 keel_verify_identity() {
   keel_load_config
-  keel_session_evidence || keel_die 'Cannot prove this login used the selected SSH authentication mode. Reconnect without multiplexing. OpenSSH needs trusted journald publickey records; Tailscale SSH needs a privileged login and trusted journal/logind records. Use an interactive Tailscale SSH login, not a remote command. See docs/security.md.'
+  if [[ "$KEEL_TS_MODE" == tailscale-ssh ]]; then
+    case "$(keel_tailscale_ssh_state)" in
+      enabled) ;;
+      disabled) keel_die 'Tailscale SSH was selected but its server is disabled. Configure network and SSH policy for this server tag and administrator, keep recovery access, then run sudo keel tailscale-ssh. Do not run secure yet.' ;;
+      *) keel_die 'Cannot inspect Tailscale SSH server state. Check tailscaled and sudo tailscale debug prefs; verification remains blocked.' ;;
+    esac
+  fi
+  if ! keel_session_evidence; then
+    if [[ "$KEEL_TS_MODE" == tailscale-ssh ]]; then
+      if ( KEEL_TS_MODE=openssh; keel_session_evidence ); then
+        keel_die 'This is an OpenSSH public-key login, but Tailscale SSH identity authentication was selected. Keep this recovery session; open a fresh interactive login through the Tailscale address or MagicDNS name, then run keel verify there.'
+      fi
+      keel_die 'Cannot establish trusted Tailscale SSH login evidence for this administrator. Use a fresh interactive Tailscale SSH login, not a public-IP login or remote command. If Tailscale denies the connection, check its SSH policy destination tag and local user. Otherwise inspect trusted journal/logind records; see docs/security.md. Do not bypass verification.'
+    fi
+    keel_die 'Cannot prove OpenSSH public-key authentication for this administrator. Reconnect without multiplexing using an authorized key; trusted journald publickey records and a supported sshd process are required. See docs/security.md.'
+  fi
   if [[ "$KEEL_TS" == yes ]]; then
     keel_is_tailscale_ip "$KEEL_LOCAL_IP" || keel_die "Connect through this host's Tailscale address."
   elif keel_is_tailscale_ip "$KEEL_LOCAL_IP"; then

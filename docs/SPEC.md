@@ -28,6 +28,15 @@ Docker/Dokploy/Wazuh installation, and cloudflared installation are out of scope
   the original account, reboot, or change provider firewalls.
 - Preparation is additive and repeatable, not a globally reversible transaction.
   Refuse preparation and installation while a security transaction is pending.
+- For Tailscale modes, preparation prints an advisory policy template; the
+  read-only `tailscale-policy` command can regenerate it. Use explicit identity
+  and destination-tag placeholders, network grants for the supplied OpenSSH port
+  (an unresolved placeholder if unknown), or TCP 22 plus a check-mode SSH rule
+  restricted to the prepared administrator for Tailscale SSH. Public OpenSSH
+  emits no tailnet rules. Never upload or apply templates, infer authentication,
+  or claim they restrict existing broad rules. Explain replacement of placeholders,
+  merging into existing sections, tag ownership/device identity, editor validation
+  and fresh-connection testing before access changes.
 
 ## Access and hardening
 
@@ -38,6 +47,15 @@ Workflow: Prepare -> Verify -> Secure -> Confirm -> Doctor.
   to that server; tailnet SSH policy remains operator-managed.
 - Enable Tailscale SSH before verifying that mode, with an interruption warning.
   Preserve public recovery access until secure is applied.
+- Tailscale SSH preparation must identify remaining setup steps rather than
+  present a public-IP login as verification-ready. Preserve the selected tag as
+  trusted advisory data for templates. Before enabling, display the template and
+  require acknowledgment of network/SSH policy and independent recovery access;
+  do not claim the external policy has been verified. Refuse unknown daemon state,
+  make an already-enabled request a no-op, and durably invalidate old verification
+  before a server switch can disconnect the process. Diagnose a disabled server
+  and a proven OpenSSH login in the wrong mode separately from missing trusted
+  session evidence; all remain blocked.
 - Require actual administrator sudo execution. Correlate trusted server-side
   evidence with the invoking process ancestry; caller-provided SSH metadata is
   only a hint, never evidence. Unsupported evidence formats fail closed.
