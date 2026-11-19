@@ -116,9 +116,19 @@ results and remaining gaps. Lint and mocked tests do not satisfy VM acceptance.
 
 A public Bash bootstrap may install a reviewed, pinned full runtime archive after
 checking an embedded SHA-256. Reject unsupported releases, malformed archives,
-untrusted targets, unrelated command collisions, different installed versions,
+untrusted targets, unrelated command collisions, unsupported installed layouts,
 and pending/legacy recovery before replacing runtime files. Recheck pending state
 under the common mutation lock. Matching trusted installs are idempotent.
+
+The same command updates a different trusted runtime automatically. Stage the full
+verified payload, retain a private recovery directory and atomically exchange
+runtime directories on the same filesystem, so interruption never removes the
+installed runtime. Retain the previous runtime after success and recovery data on
+failure. Refuse unsupported atomic exchange rather than fall back to sequential
+replacement. Invalidate old verification and advance the preparation boundary
+before publication, preserving configuration, accounts, keys and firewall policy.
+Updates require Python 3 for the Linux atomic-exchange syscall; installation and
+runtime behavior otherwise remain Bash. Only explicit --init reruns preparation.
 
 Installation does not apply SSH/firewall/account policy. An explicit --init option
 may start additive preparation on a real terminal after installation and lock

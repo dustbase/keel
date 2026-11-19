@@ -30,21 +30,32 @@ before execution, download `install.sh`, inspect it, then run `sudo bash install
 bootstrap itself remains code you must trust/review. Install `curl` first if it is
 not already available.
 
-Pending recovery blocks installation. Repeating the installer with an exact
-matching, trusted runtime is a no-op apart from repairing its command symlink.
-A different existing runtime or unrelated `keel` command is refused without
-replacement; upgrades still require a reviewed checkout. The preview's runtime
+The same command automatically updates an existing trusted Keel installation.
+Omit `--init` to update the runtime without rerunning preparation:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dustbase/keel/main/install.sh | sudo bash
+```
+
+Pending recovery blocks installation and updates. An exact matching runtime is a
+no-op apart from repairing its command symlink. Untrusted layouts or unrelated
+`keel` commands are refused. Automatic updates require Python 3 and Linux atomic
+directory exchange; Keel refuses an unsupported exchange instead of replacing
+files sequentially. The preview's runtime
 pin is `af69be6f725885391ce215213a9ebe4b334f522b`; updating it requires reviewing
 the new runtime and updating its archive checksum together.
 
-For an existing experimental installation, keep independent recovery access and
-resolve pending transactions with its original runtime before upgrading. Review
-the new pinned checkout, then run `sudo bash bin/keel init` from that checkout.
-This installs the reviewed runtime and reruns additive preparation; it is not an
-install-only upgrade. Keep the existing administrator/hostname at the prompts and
-reselect the intended Tailscale mode, tag and firewall profile. Then establish a
-fresh connection and verify again. The public bootstrap deliberately refuses
-different installed runtimes rather than perform this upgrade automatically.
+Updates preserve settings, accounts, keys, and SSH/firewall configuration, and
+invalidate old verification so you must establish a fresh login before hardening.
+The prior runtime is retained under the printed `/opt/.keel-upgrade.*/runtime`
+recovery path. Recovery directories are root-private and never automatically
+deleted. The runtime directory swap is atomic; after interruption, a complete old
+or new runtime remains installed. If publication or a later check fails, stop and
+inspect the installed/recovery trees from independent recovery access. A staged
+status can mean interruption before or after the swap; do not assume which tree
+is old without inspecting it. Keep console recovery available during updates.
+Adding `--init` explicitly reruns additive preparation after the update, with the
+existing hostname and administrator offered as defaults.
 
 ## Getting started
 
