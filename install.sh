@@ -143,7 +143,7 @@ ki_upgrade_runtime() {
   printf 'Updated Keel. Previous runtime retained at %s/runtime\n' "$backup"
 }
 ki_main() {
-  local init=no updated=no arg command payload
+  local init=no existing=no arg command payload
   for arg in "$@"; do
     case "$arg" in
       --init) init=yes ;;
@@ -194,13 +194,13 @@ ki_main() {
       { ki_die 'Existing keel command is not the expected installation; nothing replaced.'; return 1; }
   fi
   if [[ -e /opt/keel || -L /opt/keel ]]; then
+    existing=yes
     ki_trusted_runtime /opt/keel || { ki_die 'Untrusted or unsupported installed runtime; nothing replaced.'; return 1; }
     if ki_existing_matches "$payload" /opt/keel; then
       ln -sfn /opt/keel/bin/keel /usr/local/bin/keel || return 1
       printf 'The pinned runtime is already installed.\n'
     else
       ki_upgrade_runtime "$payload" /opt/keel /usr/local/bin/keel /var/lib/keel || return 1
-      updated=yes
     fi
   else
     keel_trusted_path /opt || { ki_die 'Untrusted /opt.'; return 1; }
@@ -213,7 +213,7 @@ ki_main() {
   if [[ "$init" == yes ]]; then
     exec /opt/keel/bin/keel init </dev/tty
   fi
-  if [[ "$updated" == yes ]]; then
+  if [[ "$existing" == yes ]]; then
     printf 'Settings and accounts preserved. Open a fresh SSH login and run keel verify before secure.\nUse sudo keel init only if you want to rerun preparation.\n'
     return 0
   fi
