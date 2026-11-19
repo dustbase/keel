@@ -198,8 +198,8 @@ test_verify_boundary() {
   if ( keel_verify ) > "$scratch/error" 2>&1; then fail 'Same-boundary connection verified.'; fi
   grep -q 'SSH connection predates' "$scratch/error"
   grep -q 'Do not rerun init solely' "$scratch/error"
-  grep -q 'On your computer.*ssh -o ControlMaster=no -o ControlPath=none -p 2222 admin@node' "$scratch/error"
-  grep -q 'In the new login.*keel verify' "$scratch/error"
+  grep -q 'ssh -o ControlMaster=no -o ControlPath=none -p 2222 admin@node' "$scratch/error"
+  grep -q '    keel verify$' "$scratch/error"
   [[ ! -e "$KEEL_STATE/verified" ]] || fail 'Old connection wrote verification.'
   connection=99
   expect_fail keel_verify
@@ -221,10 +221,11 @@ test_verify_boundary() {
   grep -q 'No completed preparation' "$scratch/error"
   [[ ! -e "$KEEL_STATE/verified" ]] || fail 'Invalid preparation wrote verification.'
   assert_eq "$(keel_config_digest)" "$digest"
+  keel_tailscale_status_json() { return 1; }
   KEEL_LOCAL_IP=2001:db8::2 KEEL_LOCAL_PORT=22 KEEL_TS=yes
   keel_reconnect_help confirm > "$scratch/reconnect"
   grep -q 'admin@2001:db8::2' "$scratch/reconnect"
-  grep -q 'In the new login.*keel confirm' "$scratch/reconnect"
+  grep -q '    keel confirm$' "$scratch/reconnect"
   if grep -q -- '-p 22' "$scratch/reconnect"; then fail 'Unnecessary default port in reconnect command.'; fi
 }
 test_openssh_evidence() {

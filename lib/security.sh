@@ -30,6 +30,7 @@ keel_verify_preparation() {
 keel_reconnect_help() {
   # Presentation only, called after identity verification has established context.
   local action="$1" target="${KEEL_LOCAL_IP:-}" port="${KEEL_LOCAL_PORT:-22}" reconnect
+  local ip_target data names short full fallback=''
   local -a args=(ssh -o ControlMaster=no -o ControlPath=none)
   [[ "$action" == verify || "$action" == confirm ]] || return 1
   keel_valid_user "$KEEL_ADMIN" || return 1
@@ -39,10 +40,24 @@ keel_reconnect_help() {
   fi
   [[ "$port" =~ ^[0-9]{1,5}$ ]] && (( 10#$port >= 1 && 10#$port <= 65535 )) || return 1
   [[ "$port" == 22 ]] || args+=(-p "$port")
+  ip_target="$target"
+  if [[ "$KEEL_TS" == yes && "${KEEL_LOCAL_IP:-}" =~ ^[0-9a-fA-F:.]+$ ]]; then
+    if data="$(keel_tailscale_status_json 2>/dev/null)" && names="$(keel_magicdns_names "$data" "$KEEL_LOCAL_IP")"; then
+      read -r short full <<< "$names"
+      target="$short"
+      printf -v fallback '%q ' "${args[@]}" "$KEEL_ADMIN@$ip_target"
+    fi
+  fi
   printf -v reconnect '%q ' "${args[@]}" "$KEEL_ADMIN@$target"
   keel_ui_next 'Keep this session open for recovery. Open a NEW terminal on your computer.'
-  keel_ui_field 'On your computer' "${reconnect% }"
-  keel_ui_field 'In the new login' "keel $action"
+  keel_ui_command 'On your computer' "${reconnect% }"
+  keel_ui_command 'In the new login' "keel $action"
+  if [[ -n "$fallback" ]]; then
+    keel_ui_status INFO "MagicDNS name advertised as $full. Your client must accept tailnet DNS."
+    keel_ui_command 'Fallback if the name does not resolve (Tailscale IP)' "${fallback% }"
+  elif [[ "$KEEL_TS" == yes ]]; then
+    keel_ui_status INFO 'Using the server address because matching MagicDNS metadata could not be confirmed.'
+  fi
   if [[ "$KEEL_TS" == no ]]; then
     keel_ui_status INFO 'If you use NAT, a proxy or port forwarding, substitute the original address and port you connected through.'
   fi

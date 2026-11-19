@@ -148,7 +148,7 @@ keel_doctor_tailscale() {
     return 0
   fi
   local data state online health ssh
-  data="$(timeout --kill-after=2s 15s tailscale status --json 2>/dev/null)" || {
+  data="$(keel_tailscale_status_json 2>/dev/null)" || {
     keel_ui_status UNKNOWN 'Cannot query Tailscale status; service and peer health are unverified.'
     return 0
   }
@@ -161,6 +161,7 @@ keel_doctor_tailscale() {
   online="$(jq -r 'if .Self.Online == true then "online" elif .Self.Online == false then "offline" else "unknown" end' <<< "$data")"
   keel_ui_field Service "$state"
   keel_ui_field Node "$online"
+  keel_magicdns_report "$data"
   [[ "$state" == Running && "$online" == online ]] || keel_ui_status WARN 'Tailscale is not reporting a running, online node. Check its health before relying on tailnet access.'
   health="$(jq -r '(.Health // [])[]' <<< "$data")"
   if [[ -n "$health" ]]; then

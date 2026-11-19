@@ -165,6 +165,10 @@ keel_preparation_next_steps() {
   keel_ui_section 'Next steps'
   keel_ui_status WARN 'Keep your original SSH session open.'
   if [[ "$KEEL_TS" == yes ]]; then
+    local dns_data
+    if dns_data="$(keel_tailscale_status_json 2>/dev/null)"; then
+      keel_magicdns_report "$dns_data"
+    else keel_ui_status UNKNOWN 'MagicDNS status unavailable; no client DNS capability has been verified.'; fi
     keel_tailscale_policy "${policy_args[@]}" || return 1
   fi
   if [[ "$KEEL_TS_MODE" == tailscale-ssh ]]; then
@@ -189,6 +193,24 @@ keel_preparation_next_steps() {
   echo 'Disable SSH multiplexing for verification: ssh -o ControlMaster=no -o ControlPath=none USER@HOST'
   echo "Then run (without sudo): keel verify"
   echo "Only after verification: keel secure"
+}
+
+# Report the tailnet setting and advertised node name, not client DNS success.
+keel_magicdns_report() {
+  local state names short full
+  state="$(jq -er 'if .CurrentTailnet.MagicDNSEnabled == true then "enabled" elif .CurrentTailnet.MagicDNSEnabled == false then "disabled" else "unknown" end' <<< "$1" 2>/dev/null)" || state=unknown
+  case "$state" in
+    enabled)
+      keel_ui_field MagicDNS 'enabled on tailnet'
+      if names="$(keel_magicdns_names "$1")"; then
+        read -r short full <<< "$names"
+        keel_ui_field 'Node name' "$short"
+        keel_ui_field 'Full DNS name' "$full"
+      else keel_ui_status UNKNOWN 'MagicDNS node-name metadata is missing or unsupported.'; fi
+      keel_ui_status INFO 'Your client must accept tailnet DNS for names to resolve; client resolution is not verified here.' ;;
+    disabled) keel_ui_field MagicDNS 'disabled; reconnect using the Tailscale IP' ;;
+    *) keel_ui_status UNKNOWN 'MagicDNS tailnet setting could not be established.' ;;
+  esac
 }
 
 # Output only: no policy API calls, state changes, or assumptions about identity.

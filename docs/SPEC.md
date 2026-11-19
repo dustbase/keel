@@ -108,6 +108,13 @@ Preparation, doctor and the pre-apply security plan explicitly distinguish publi
 OpenSSH, OpenSSH over Tailscale and Tailscale SSH, including the authentication
 method. SSH access mode is separate from the application-port profile.
 
+For Tailscale modes, preparation and doctor report the advertised MagicDNS
+setting and node names when available, without claiming client DNS resolution.
+Reconnect guidance prefers the short MagicDNS name only when enabled tailnet
+metadata binds it to the proven destination IP, and retains an explicit IP
+fallback. Missing, disabled, malformed or mismatched metadata preserves the
+original address. Names are advisory and never authentication evidence.
+
 Doctor reports observed facts, intended state and unknown checks separately. It
 must not claim global security or external reachability from local checks. Reuse
 the hardening checks so diagnostics do not disagree with workflow gates.

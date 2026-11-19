@@ -2,8 +2,8 @@
 # Public bootstrap: installs a reviewed runtime; never applies hardening.
 set -Eeuo pipefail
 umask 077
-readonly KI_REF=5c4d61a737102dd09971eae09a39b15ab6f2a7e2
-readonly KI_SHA256=a5e00b4b9967170be2c4d153f4bfab62be82ff8d55764de0813995a08508ac88
+readonly KI_REF=dd51d3acbcf4a27cb65c04d0f97ea8b5ff826889
+readonly KI_SHA256=7a3fde1c71efa6d0be31980314bb71cb27a7e977ca5ef51c764e742b1f9d438b
 readonly KI_URL="https://codeload.github.com/dustbase/keel/tar.gz/$KI_REF"
 readonly KI_ROOT="keel-$KI_REF"
 KI_MODULES=(common doctor keys prepare security session ssh transaction)
