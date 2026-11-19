@@ -11,31 +11,39 @@ profiles with guarded SSH changes.
 > validation remain required. Do not use this draft on production servers.
 > Timed recovery cannot replace provider rescue-console access.
 
-## Public installer preview
+## Install or update (experimental)
 
-On a disposable Ubuntu 24.04/26.04 VM with working SSH and console recovery:
+Use the same command to install Keel or update an existing installation on a
+disposable Ubuntu 24.04/26.04 VM with working SSH and console recovery:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dustbase/keel/main/install.sh | sudo bash
+```
+
+This installs or updates the runtime without rerunning preparation or changing
+your accounts and settings. If the pinned version is already installed, it is a
+no-op apart from repairing the command symlink. After an update, establish a fresh
+SSH login and run `keel verify` before hardening.
+
+**First-time preparation:** after a new installation, run:
+
+```bash
+sudo keel init
+```
+
+**Optional combined install/update and preparation:** use this only when you want
+to run or rerun the interactive setup prompts:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dustbase/keel/main/install.sh | sudo bash -s -- --init
 ```
 
-This is an experimental installer preview, not completed LTS acceptance. The
-bootstrap downloads a pinned commit archive, checks its embedded SHA-256 before
-extraction or loading code, and installs the complete runtime. `--init` then starts
-interactive preparation using your terminal. It never automatically verifies,
-hardens, or confirms access. Those steps still require fresh SSH connections below.
-
-For installation only, omit `--init` and later run `sudo keel init`. For review
-before execution, download `install.sh`, inspect it, then run `sudo bash install.sh --init` from an interactive terminal. The checksum verifies the payload; the
-bootstrap itself remains code you must trust/review. Install `curl` first if it is
-not already available.
-
-The same command automatically updates an existing trusted Keel installation.
-Omit `--init` to update the runtime without rerunning preparation:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/dustbase/keel/main/install.sh | sudo bash
-```
+This remains an experimental installer preview, not completed LTS acceptance. The
+bootstrap downloads a pinned commit archive and checks its embedded SHA-256 before
+extraction or loading code. It never automatically verifies, hardens, or confirms
+access. For review before execution, download `install.sh`, inspect it, then run
+`sudo bash install.sh`. The checksum verifies the payload; the bootstrap itself
+remains code you must trust/review. Install `curl` first if needed.
 
 Pending recovery blocks installation and updates. An exact matching runtime is a
 no-op apart from repairing its command symlink. Untrusted layouts or unrelated
