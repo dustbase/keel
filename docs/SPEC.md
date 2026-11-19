@@ -96,9 +96,29 @@ Workflow: Prepare -> Verify -> Secure -> Confirm -> Doctor.
 
 ## Diagnostics and acceptance
 
+Human CLI output uses shared sections, aligned fields and explicit PASS/WARN/
+UNKNOWN/INFO/ERROR/NEXT labels. Color is automatic only on a capable terminal;
+NO_COLOR (including an empty value), TERM=dumb and redirected output disable it.
+Narrow-terminal prose wraps without cursor controls, spinners or cleared screens.
+Machine-readable evidence, policy JSON, state and security fingerprints must not
+pass through presentation helpers. Human warnings/errors remain on stderr.
+Doctor summarizes checks and shows compact Tailscale state/health warnings rather
+than dumping the tailnet peer list. Unknown checks never count as passes.
+
 Doctor reports observed facts, intended state and unknown checks separately. It
 must not claim global security or external reachability from local checks. Reuse
 the hardening checks so diagnostics do not disagree with workflow gates.
+
+Docker diagnostics are read-only and query only the fixed local rootful Docker
+socket, ignoring remote-context environment overrides. Report observed running
+container bindings, host/shared namespaces, effective firewall backend when the
+daemon supplies it, Swarm state and published service ports on managers. Compare
+non-loopback publications with the prepared application profile as potential
+conflicts, never proof of external exposure or isolation. Missing/malformed data,
+workers without service inventory and unreported backend fields remain unknown.
+Do not expose container environment/secrets or modify engine/firewall state.
+IPv6 proxying, network drivers/direct routing, external policy and other engines
+remain explicitly unverified. Docker inspection also works without Keel config.
 
 Automated regressions cover installed entrypoint resolution, strict config/key
 parsing, newline merging, authentication evidence and freshness, Match behavior,

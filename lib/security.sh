@@ -7,7 +7,7 @@ keel_verify() {
   fi
   keel_atomic_write "$KEEL_STATE/verified" "$(keel_boot_id) $(keel_ticks) $(keel_config_digest) $KEEL_CONNECTION_ID $KEEL_LOCAL_PORT"
   keel_log 'Verified selected SSH authentication and successful sudo execution.'
-  echo 'Next: keel secure from this connection.'
+  keel_ui_next 'Run keel secure from this verified connection to review the hardening plan.'
 }
 keel_firewall_preflight() {
   local added manager
@@ -104,11 +104,15 @@ keel_secure() {
     keel_listener_check || keel_die 'Verified port is not an active OpenSSH listener.'
   fi
   keel_firewall_preflight || keel_die 'UFW preflight failed; review existing rules and IPv6 configuration.'
-  echo 'Security plan: disable root/password/keyboard-interactive OpenSSH login.'
-  printf 'Public management access: %s; verified SSH port: %s\n' "$([[ "$KEEL_TS" == yes ]] && echo closed || echo key-only)" "$KEEL_LOCAL_PORT"
-  printf 'Public application profile: %s (%s)\n' "$KEEL_PROFILE" "${KEEL_CUSTOM:-no custom ports}"
-  echo 'UFW will deny inbound and allow outbound. Tailscale grants and Docker networking are separate controls.'
-  echo 'Recovery deadline: five minutes. Keep this connection and rescue-console access available.'
+  keel_ui_section 'Security plan'
+  keel_ui_field 'Public management' "$([[ "$KEEL_TS" == yes ]] && echo closed || echo key-only)"
+  keel_ui_field 'Verified SSH port' "$KEEL_LOCAL_PORT"
+  keel_ui_field 'Application profile' "$KEEL_PROFILE"
+  keel_ui_field 'Custom ports' "${KEEL_CUSTOM:-none}"
+  keel_ui_field 'Recovery window' '5 minutes'
+  keel_ui_status INFO 'Disable root/password/keyboard-interactive OpenSSH login. UFW will deny inbound and allow outbound.'
+  keel_ui_status UNKNOWN 'Tailscale grants and Docker networking are separate controls.'
+  keel_ui_status WARN 'Keep this connection and independent rescue-console access available until confirmation.'
   keel_yes 'Apply these changes?' || return 0
   keel_backup_security || keel_die 'Backup failed; restrictive changes were not applied.'
   if ! keel_schedule_rollback; then
@@ -131,7 +135,7 @@ keel_secure() {
   keel_atomic_write "$KEEL_TX/applied-digest" "$(keel_security_digest)"
   keel_transaction_phase awaiting_confirmation
   keel_log 'Changes applied; recovery remains armed.'
-  echo 'Establish a NEW connection (disable SSH multiplexing), then run: keel confirm'
+  keel_ui_next 'Establish a NEW connection with SSH multiplexing disabled, then run keel confirm. Recovery remains armed.'
 }
 keel_confirm() {
   keel_verify_identity
@@ -155,7 +159,7 @@ keel_confirm() {
   rm -f "$KEEL_STATE/pending"
   keel_cancel_timer
   keel_log 'Post-change SSH access confirmed. Recovery cancelled.'
-  echo 'Run sudo keel doctor for observed state and remaining limitations.'
+  keel_ui_next 'Run sudo keel doctor for observed state and remaining limitations.'
 }
 keel_enable_tailscale_ssh() {
   keel_no_pending

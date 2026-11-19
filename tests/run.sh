@@ -11,3 +11,5 @@ bash tests/installer.sh
 bash tests/installer-upgrade.sh
 bash tests/tailscale-policy.sh
 bash tests/tailscale-onboarding.sh
+bash tests/docker-doctor.sh
+bash tests/cli-output.sh
